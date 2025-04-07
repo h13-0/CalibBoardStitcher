@@ -114,15 +114,22 @@ class Stitcher:
         button = math.ceil(max([point[1] for point in transformed_box.vertex]))
 
         # 4. 对ROI区域进行仿射，加速仿射运算
+        ## 4.1 重新计算变换矩阵
         #src_points = np.array([point.img_point for point in matched_points])
         dst_points = np.array([[point.cb_point[0] - left, point.cb_point[1] - top] for point in matched_points])
         m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
 
         start = time.perf_counter()
-        partial_mask = cv2.warpAffine(partial_mask, m, (right - left + 1, button - top + 1)) # 0.0018s
-        partial_img = cv2.warpAffine(partial_img, m, (right - left + 1, button - top + 1))   # 0.0018s
+        ## 4.2 由于子图图像范围可能大于标定板范围，故需要限幅
+        l = max(left, 0)
+        r = min(right, base_w - 1)
+        t = max(top, 0)
+        b = min(button, base_h - 1)
+        partial_mask = cv2.warpAffine(partial_mask, m, (r - l + 1, b - t + 1)) # 0.0018s
+        partial_img = cv2.warpAffine(partial_img, m, (r - l + 1, b - t + 1))   # 0.0018s
         end = time.perf_counter()
-        logging.info("cv2.warpAffine() spend: {}".format(end - start))
+        logging.debug("cv2.warpAffine() spend: {}".format(end - start))
+
 
         # 5. 将变换后的子图拼接回原图像
         base_img_roi = base_img[top:button+1, left:right+1]
@@ -242,7 +249,7 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
         file_path = os.path.join(calib_img_dir, file)
         img = cv2.imread(file_path)
         if base_img is None:
-            base_img = np.zeros_like(stitcher.board_cfg.img_size, dtype=np.uint8)
+            base_img = np.zeros(stitcher.board_cfg.img_shape, dtype=np.uint8)
             base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
             results["base_width"] = base_img.shape[1]
             results["base_height"] = base_img.shape[0]
@@ -316,6 +323,6 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    #calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
-    stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
+    calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
+    #stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
 

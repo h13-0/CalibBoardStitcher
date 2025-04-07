@@ -102,3 +102,6 @@ class CalibBoardObj:
     def img_size(self) -> tuple[int, int]:
         return self._row_count * self.grid_size, self._col_count * self.grid_size
 
+    @property
+    def img_shape(self) -> tuple[int, int, int]:
+        return self._row_count * self.grid_size, self._col_count * self.grid_size, 3
