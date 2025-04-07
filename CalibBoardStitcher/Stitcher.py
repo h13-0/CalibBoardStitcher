@@ -1,9 +1,9 @@
 import enum
+import json
 import logging
 import math
 import os
 import time
-from idlelib.browser import transform_children
 
 import cv2.typing
 import numpy as np
@@ -25,6 +25,15 @@ class MatchedPoints:
         return ("MatchedPoints: {} on CalibBoard and {} on image id: {}."
                 .format(self.cb_point, self.img_point, self.img_id))
 
+    def __repr__(self):
+        return self.__str__()
+
+    def dict(self) -> dict:
+        return {
+            "cb_point": self.cb_point,
+            "img_point": self.img_point
+        }
+
 
 class Stitcher:
     def __init__(self, board:CalibBoardObj):
@@ -33,7 +42,12 @@ class Stitcher:
 
         # 生成标定板标准图像以及相关参数信息
         board_generator = BoardGenerator()
-        self._board_img = board_generator.gen_img(board)
+        self._board_img = None
+        #self._board_img = board_generator.gen_img(board)
+
+    @property
+    def board_cfg(self) -> CalibBoardObj:
+        return self._board
 
     def detect_calib_board_cells(self):
 
@@ -99,17 +113,21 @@ class Stitcher:
         top = math.floor(min([point[1] for point in transformed_box.vertex]))
         button = math.ceil(max([point[1] for point in transformed_box.vertex]))
 
-        # 4. 对partial_mask和partial_img同时进行仿射变换
+        # 4. 对ROI区域进行仿射，加速仿射运算
+        #src_points = np.array([point.img_point for point in matched_points])
+        dst_points = np.array([[point.cb_point[0] - left, point.cb_point[1] - top] for point in matched_points])
+        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
+
         start = time.perf_counter()
-        partial_mask = cv2.warpAffine(partial_mask, m, (base_w, base_h)) #0.669s
-        partial_img = cv2.warpAffine(partial_img, m, (base_w, base_h))   #0.669s
+        partial_mask = cv2.warpAffine(partial_mask, m, (right - left + 1, button - top + 1)) # 0.0018s
+        partial_img = cv2.warpAffine(partial_img, m, (right - left + 1, button - top + 1))   # 0.0018s
         end = time.perf_counter()
         logging.info("cv2.warpAffine() spend: {}".format(end - start))
 
-        # 4. 将变换后的子图拼接回原图像
+        # 5. 将变换后的子图拼接回原图像
         base_img_roi = base_img[top:button+1, left:right+1]
-        partial_img_roi = partial_img[top:button+1, left:right+1]
-        partial_mask_roi = partial_mask[top:button+1, left:right+1]
+        partial_img_roi = partial_img
+        partial_mask_roi = partial_mask
         partial_mask_roi_bool = partial_mask_roi != 0
         base_img_roi[partial_mask_roi_bool] = partial_img_roi[partial_mask_roi_bool] #0.03
 
@@ -191,42 +209,113 @@ class Stitcher:
             return None
 
 
-def main():
+def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
+    """
+    执行校准
+
+    :param calib_img_dir: 标定板图像文件夹
+    :param export_json: 导出Json格式的校准结果，值为路径，为空不导出
+    :param export_img: 导出拼接后的图像，值为路径，为空不导出
+    :return:
+    """
     stitcher = None
     base_img = None
     base_mask = None
-    base_dir = "../datasets/stitch20250313/"
+    results = {"matched_points": {}}
 
-    for file in os.listdir(base_dir):
-        file_path = os.path.join(base_dir, file)
+    for file in os.listdir(calib_img_dir):
+        file_path = os.path.join(calib_img_dir, file)
         img = cv2.imread(file_path)
+
+        # 尝试寻找图像中的二维码，并获取配置信息
         if stitcher is None:
             stitcher = Stitcher.from_qr_img(img)
+            if stitcher:
+                results["rc"] = stitcher.board_cfg.row_count
+                results["cc"] = stitcher.board_cfg.col_count
+                results["px_size"] = stitcher.board_cfg.qr_pixel_size
+                results["qr_border"] = stitcher.board_cfg.qr_border
+                break
 
-        if stitcher is not None:
-            if base_img is None:
-                base_img = np.zeros_like(stitcher._board_img, dtype=np.uint8)
-                base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
+    # 执行标定算法
+    for file in os.listdir(calib_img_dir):
+        file_path = os.path.join(calib_img_dir, file)
+        img = cv2.imread(file_path)
+        if base_img is None:
+            base_img = np.zeros_like(stitcher.board_cfg.img_size, dtype=np.uint8)
+            base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
+            results["base_width"] = base_img.shape[1]
+            results["base_height"] = base_img.shape[0]
 
+        start = time.perf_counter()
+        matched_points = stitcher.match(img, file) #0.1655s
+        end = time.perf_counter()
+        logging.info("stitcher.match() spend: {}".format(end - start))
+
+        for matched in matched_points:
+            logging.info(matched)
+
+        # 找到匹配点对，进行拼接
+        if len(matched_points) > 0:
             start = time.perf_counter()
-            matched_points = stitcher.match(img, file) #0.1655s
+            base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
             end = time.perf_counter()
-            logging.info("stitcher.match() spend: {}".format(end - start))
+            logging.info("stitcher.stitch_full_cover() spend: {}".format(end - start))
 
-            for matched in matched_points:
-                logging.info(matched)
-
-            if len(matched_points) > 0:
-                start = time.perf_counter()
-                base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
-                end = time.perf_counter()
-                logging.info("stitcher.stitch_full_cover() spend: {}".format(end - start))
+            results["matched_points"][file] = []
+            for p in matched_points:
+                results["matched_points"][file].append(p.dict())
 
 
+    if len(export_img) > 0:
+        cv2.imwrite(export_img, base_img)
 
-    #cv2.imshow("result", base_img)
-    cv2.imwrite("./temp/base_img.jpg", base_img)
+    if len(export_json) > 0:
+        with open(export_json, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=4)
+
+
+def stitch(img_dir: str, json_file: str, export_img: str=""):
+    data = None
+
+    with open(json_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    board_cfg = CalibBoardObj(
+        row_count=data["rc"],
+        col_count=data["cc"],
+        qr_pixel_size=data["px_size"],
+        qr_border=data["qr_border"]
+    )
+    stitcher = Stitcher(board_cfg)
+
+    base_img = np.zeros((data["base_height"], data["base_width"], 3), dtype=np.uint8)
+    base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
+
+    for file in data["matched_points"]:
+        file_path = os.path.join(img_dir, file)
+        if not os.path.exists(file_path):
+            continue
+        img = cv2.imread(file_path)
+
+        matched_points = []
+        for point in data["matched_points"][file]:
+            matched_point = MatchedPoints(file, cb_point=point["cb_point"], img_point=point["img_point"])
+            print(matched_point)
+            matched_points.append(matched_point)
+
+        start = time.perf_counter()
+        base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
+        end = time.perf_counter()
+        logging.info("stitcher.stitch_full_cover() spend: {}".format(end - start))
+
+    if len(export_img) > 0:
+        cv2.imwrite(export_img, base_img)
+
 
 if __name__ == "__main__":
     logging_config()
-    main()
+    #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
+    #calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
+    stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
+

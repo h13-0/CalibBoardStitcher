@@ -98,3 +98,7 @@ class CalibBoardObj:
         # TODO
         return (33) * self._qr_pixel_size
 
+    @property
+    def img_size(self) -> tuple[int, int]:
+        return self._row_count * self.grid_size, self._col_count * self.grid_size
+
