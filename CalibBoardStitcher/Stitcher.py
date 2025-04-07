@@ -130,9 +130,8 @@ class Stitcher:
         end = time.perf_counter()
         logging.debug("cv2.warpAffine() spend: {}".format(end - start))
 
-
         # 5. 将变换后的子图拼接回原图像
-        base_img_roi = base_img[top:button+1, left:right+1]
+        base_img_roi = base_img[t:b+1, l:r+1]
         partial_img_roi = partial_img
         partial_mask_roi = partial_mask
         partial_mask_roi_bool = partial_mask_roi != 0
