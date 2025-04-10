@@ -1,5 +1,8 @@
 import logging
+import os.path
 import threading
+
+import cv2
 
 from CalibBoardGenerator.BoardGenerator import BoardGenerator
 from QtUI.CalibBoardStitcherUI import CalibBoardStitcherUI, ButtonClickedEvent
@@ -24,6 +27,9 @@ class MainWorkflow:
         self._board_img = None
 
     def _gen_calib_board_img_task(self):
+        """
+        生成标定板图像的task
+        """
         self._ui.set_progress_bar_value(0)
 
         board_obj = CalibBoardObj(
@@ -40,6 +46,33 @@ class MainWorkflow:
         )
         self._ui.set_progress_bar_value(100)
         self._ui.set_calib_board_img(self._board_img)
+
+    def _load_sub_image_seq_task(self, folder: str):
+        """
+        从指定路径加载子图像序列的task
+
+        :param folder: 文件夹路径
+        """
+        self._ui.set_progress_bar_value(0)
+
+        if folder is None:
+            logging.error("No folder selected.")
+            return
+        logging.info("Loading sub image sequence from folder {}.".format(folder))
+
+        file_list = os.listdir(folder)
+        file_num = len(file_list)
+        for i in range(file_num):
+            file_name = file_list[i]
+            file_path = os.path.join(folder, file_name)
+            try:
+                self._ui.add_sub_image(file_name, file_path)
+                self._ui.set_progress_bar_value(int((i + 1) / file_num * 100))
+            except Exception as e:
+                logging.error(f"load image: {file_path} failed with msg: {str(e)}")
+            if self._stop_event.is_set():
+                break
+        self._ui.set_progress_bar_value(100)
 
     def _do_task(self, task):
         task()
@@ -64,9 +97,18 @@ class MainWorkflow:
         """
         self._ui.set_cb_changed_callback(
             ButtonClickedEvent.GEN_CALIB_BOARD_IMG_BTN_CLICKED,
-            lambda: self._try_load_task(
+            lambda : self._try_load_task(
                 self._gen_calib_board_img_task,
                 task_name="Generate CalibBoard image"
+            ),
+        )
+        self._ui.set_cb_changed_callback(
+            ButtonClickedEvent.LOAD_SUB_IMG_SEQ_BTN_CLICKED,
+            lambda : self._try_load_task(
+                lambda : self._load_sub_image_seq_task(
+                    folder=self._ui.select_folder("选择子图像序列文件夹")
+                ),
+                task_name="Load sub image sequence"
             ),
         )
 

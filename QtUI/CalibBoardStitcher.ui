@@ -81,7 +81,7 @@
          </size>
         </property>
         <property name="currentIndex">
-         <number>0</number>
+         <number>1</number>
         </property>
         <widget class="QWidget" name="tab">
          <attribute name="title">
@@ -104,7 +104,7 @@
           <property name="geometry">
            <rect>
             <x>10</x>
-            <y>50</y>
+            <y>10</y>
             <width>150</width>
             <height>30</height>
            </rect>
@@ -117,7 +117,7 @@
           <property name="geometry">
            <rect>
             <x>220</x>
-            <y>10</y>
+            <y>50</y>
             <width>85</width>
             <height>30</height>
            </rect>
@@ -139,7 +139,7 @@
           <property name="geometry">
            <rect>
             <x>220</x>
-            <y>50</y>
+            <y>10</y>
             <width>85</width>
             <height>30</height>
            </rect>
@@ -161,7 +161,7 @@
           <property name="geometry">
            <rect>
             <x>10</x>
-            <y>10</y>
+            <y>50</y>
             <width>150</width>
             <height>30</height>
            </rect>
@@ -274,7 +274,7 @@
            </rect>
           </property>
          </widget>
-         <widget class="QPushButton" name="OpenTargetPhotoButton_2">
+         <widget class="QPushButton" name="autoStitchButton">
           <property name="geometry">
            <rect>
             <x>210</x>
@@ -284,7 +284,7 @@
            </rect>
           </property>
           <property name="text">
-           <string>修改拼接算法</string>
+           <string>执行自动拼接</string>
           </property>
          </widget>
          <widget class="QComboBox" name="comboBox">
@@ -334,10 +334,33 @@
        </widget>
       </item>
       <item>
-       <widget class="QTableView" name="tableView">
+       <widget class="QTableWidget" name="tableWidget">
         <property name="verticalScrollBarPolicy">
          <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOn</enum>
         </property>
+        <attribute name="verticalHeaderDefaultSectionSize">
+         <number>64</number>
+        </attribute>
+        <column>
+         <property name="text">
+          <string>图像ID</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>使能</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>图像</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>顶点对</string>
+         </property>
+        </column>
        </widget>
       </item>
       <item>

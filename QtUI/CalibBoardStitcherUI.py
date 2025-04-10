@@ -1,12 +1,14 @@
 import logging
+import threading
 from enum import Enum
 from types import MethodType
+from typing import Optional
 
 import cv2.typing
 from PyQt6 import QtWidgets
-from PyQt6.QtCore import pyqtSlot, pyqtSignal, Qt
-from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import QGraphicsPixmapItem, QSpinBox, QMainWindow, QWidget, QGraphicsScene
+from PyQt6.QtCore import pyqtSlot, pyqtSignal, Qt, QSize
+from PyQt6.QtGui import QImage, QPixmap, QIcon
+from PyQt6.QtWidgets import QGraphicsPixmapItem, QSpinBox, QMainWindow, QWidget, QGraphicsScene, QTableWidgetItem
 
 from QtUI.Ui_CalibBoardStitcher import Ui_CalibBoardStitcher
 
@@ -16,16 +18,46 @@ class ButtonClickedEvent(Enum):
     IMPORT_CALIB_RESULT_BTN_CLICKED = 3
     SAVE_CALIB_RESULT_BUTTON = 4
 
+class SubImage:
+    def __init__(self, id: str, img_path: str):
+        """
+        子图像对象，存储QImage、Pixmap、PixmapItem等
+        :param id: 图像id
+        :param img: cv2格式的BGR图像
+        """
+        self.id = id
+        self.img_path = img_path
+        thumbnail = self.q_image.scaled(
+            100, 100,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        #self.pixmap = QPixmap.fromImage(self.q_image)
+        #self.pixmap_item = QGraphicsPixmapItem(self.pixmap)
+        self.thumbnail_pixmap = QPixmap.fromImage(thumbnail)
+        self.enabled = False
+
+    @property
+    def q_image(self):
+        return QImage(self.img_path)
+
 class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
     _set_calib_board_img_signal = pyqtSignal(QImage)
     _set_progress_bar_value_signal = pyqtSignal(int)
     _get_spin_value_signal = pyqtSignal(QSpinBox)
+    _add_sub_image_signal = pyqtSignal(SubImage)
+    _select_folder_signal = pyqtSignal(str, str)
     def __init__(self):
         Ui_CalibBoardStitcher.__init__(self)
         QWidget.__init__(self)
 
         self._main_scene = None
         self._btn_clicked_cb_map = {}
+        # 图像Item
+        ## 标定板图像Item
+        self._calib_board_item = None
+        ## 子图像Items
+        self._sub_image_items = {}
 
     def setupUi(self, main_window: QMainWindow):
         super().setupUi(main_window)
@@ -35,6 +67,9 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self.mainGraphicView.setScene(self._main_scene)
         self.mainGraphicView.wheelEvent = MethodType(self._wheel_event, self.mainGraphicView)
         self.mainGraphicView.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
+
+        # 初始化tableWidget
+        self.tableWidget.setIconSize(QSize(100, 100))
 
         # 添加按钮槽函数
         self.genCalibBoardImageButton.clicked.connect(
@@ -58,8 +93,12 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         )
         # 读取spin值信号
         self._get_spin_value_signal.connect(self._get_spin_value)
-
-
+        # 设置添加子图像信号
+        self._add_sub_image_signal.connect(self._add_sub_image)
+        # 连接选择文件夹信号
+        self._select_folder_signal.connect(self._select_folder, type=Qt.ConnectionType.BlockingQueuedConnection)
+        self._select_folder_lock = threading.Lock()
+        self._selected_folder = None
 
     def set_cb_changed_callback(self, event: ButtonClickedEvent, callback):
         """
@@ -116,6 +155,42 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         """
         return self._get_spin_value(self.qrBoarderSpinBox)
 
+    def add_sub_image(self, id: str, img_path: str):
+        """
+        向UI中添加子图像，该API会首先在右侧`子图像序列`中添加子图像对象，并在使能对象后添加到手动标定画面
+
+        :param id: 图像id，通常定义为图像名。
+        :param img_path: 图像文件路径
+        """
+        sub_img = SubImage(
+            id=id,
+            img_path=img_path
+        )
+        self._sub_image_items[id] = sub_img
+        self._add_sub_image_signal.emit(sub_img)
+
+    def del_sub_image(self, id: str):
+        """
+        删除子图像对象
+
+        :param id: 图像id，通常定义为图像名。
+        """
+        # TODO
+        del self._sub_image_items[id]
+
+    def select_folder(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
+        """
+        通过UI选择文件夹
+
+        :return: 文件夹路径
+        """
+        if threading.current_thread() == threading.main_thread():
+            return QtWidgets.QFileDialog.getExistingDirectory(self, caption, directory)
+        else:
+            self._select_folder_signal.emit(caption, directory)
+            with self._select_folder_lock:
+                return self._selected_folder
+
     @pyqtSlot(ButtonClickedEvent)
     def _btn_clicked(self, event: ButtonClickedEvent):
         """
@@ -139,9 +214,9 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         :param img: QImage格式的图像
         """
         pixmap = QPixmap.fromImage(img)
-        pixmap_item = QGraphicsPixmapItem(pixmap)
+        self._calib_board_item = QGraphicsPixmapItem(pixmap)
         self._main_scene.clear()
-        self._main_scene.addItem(pixmap_item)
+        self._main_scene.addItem(self._calib_board_item)
         self._main_scene.update()
 
     @pyqtSlot(QSpinBox)
@@ -156,3 +231,31 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
             widget == self.mainGraphicView
         ):
             widget.scale(scale, scale)
+
+    @pyqtSlot(SubImage)
+    def _add_sub_image(self, sub_img: SubImage):
+        """
+        添加子图像的槽函数
+
+        :param sub_img:
+        """
+        row_id = self.tableWidget.rowCount()
+        self.tableWidget.insertRow(row_id)
+
+        # 设置内容
+        self.tableWidget.setItem(row_id, 0, QTableWidgetItem(sub_img.id))
+        self.tableWidget.setItem(row_id, 1, QTableWidgetItem(str(sub_img.enabled)))
+        item = QTableWidgetItem()
+        item.setIcon(QIcon(sub_img.thumbnail_pixmap))
+        self.tableWidget.setItem(row_id, 2, item)
+        self.tableWidget.setItem(row_id, 3, QTableWidgetItem("[]"))
+
+    @pyqtSlot(str, str)
+    def _select_folder(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
+        """
+        选择文件夹的槽函数
+        :return: 文件夹路径
+        """
+        with self._select_folder_lock:
+            self._selected_folder = QtWidgets.QFileDialog.getExistingDirectory(self, caption, directory)
+

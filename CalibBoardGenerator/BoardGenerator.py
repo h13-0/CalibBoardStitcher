@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 import cv2
 import numpy as np
-from numpy.ma.core import bitwise_xor, bitwise_or
+
 
 from CalibBoardElements.CalibBoardObj import CalibBoardObj
 from CalibBoardElements.QrObj import QrObj
