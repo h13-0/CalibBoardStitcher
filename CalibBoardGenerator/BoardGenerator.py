@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+
 import cv2
 import numpy as np
 from numpy.ma.core import bitwise_xor, bitwise_or
@@ -11,11 +13,12 @@ class BoardGenerator:
     def __init__(self):
         self._qr_generator = QrGenerator()
 
-    def gen_img(self, board:CalibBoardObj) -> cv2.typing.MatLike:
+    def gen_img(self, board:CalibBoardObj, progress_callback: Callable[[float], None]=None) -> cv2.typing.MatLike:
         """
         按照标定板配置生成标定板图像
 
         :param board:  标定板配置
+        :param progress_callback: 进度回调函数，接收参数为float类型，值域[0, 100]
         :return: 标定板图像
         """
         # 输出图像
@@ -48,6 +51,9 @@ class BoardGenerator:
                     # 当前为黑格
                     grid_img = np.zeros((grid_size, grid_size, 3), np.uint8)
                 grid_imgs.append(grid_img)
+                # 更新进度
+                if progress_callback:
+                    progress_callback((i * board.col_count + j + 1) * 100 / (board.row_count * board.col_count))
             # 合并该行子图
             result_imgs.append(
                 np.concatenate(

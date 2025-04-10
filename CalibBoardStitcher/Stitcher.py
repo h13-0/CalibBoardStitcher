@@ -42,7 +42,7 @@ class Stitcher:
 
         # 生成标定板标准图像以及相关参数信息
         board_generator = BoardGenerator()
-        self._board_img = None
+        #self._board_img = None
         #self._board_img = board_generator.gen_img(board)
 
     @property
@@ -322,6 +322,6 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
-    #stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
+    #calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
+    stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
 
