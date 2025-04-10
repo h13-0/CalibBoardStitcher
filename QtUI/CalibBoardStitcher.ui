@@ -253,7 +253,7 @@
            <rect>
             <x>210</x>
             <y>10</y>
-            <width>100</width>
+            <width>95</width>
             <height>30</height>
            </rect>
           </property>
@@ -274,24 +274,24 @@
            </rect>
           </property>
          </widget>
-         <widget class="QPushButton" name="autoStitchButton">
-          <property name="geometry">
-           <rect>
-            <x>210</x>
-            <y>90</y>
-            <width>100</width>
-            <height>30</height>
-           </rect>
-          </property>
-          <property name="text">
-           <string>执行自动拼接</string>
-          </property>
-         </widget>
-         <widget class="QComboBox" name="comboBox">
+         <widget class="QPushButton" name="execAutoMatchButton">
           <property name="geometry">
            <rect>
             <x>10</x>
             <y>90</y>
+            <width>295</width>
+            <height>30</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>执行自动匹配</string>
+          </property>
+         </widget>
+         <widget class="QComboBox" name="stitchMethodComboBox">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>170</y>
             <width>190</width>
             <height>30</height>
            </rect>
@@ -302,7 +302,7 @@
            <rect>
             <x>210</x>
             <y>50</y>
-            <width>100</width>
+            <width>95</width>
             <height>30</height>
            </rect>
           </property>
@@ -321,6 +321,32 @@
             <width>190</width>
             <height>30</height>
            </rect>
+          </property>
+         </widget>
+         <widget class="QLabel" name="label_7">
+          <property name="geometry">
+           <rect>
+            <x>10</x>
+            <y>130</y>
+            <width>295</width>
+            <height>30</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>选择拼接方式（仅影响预览，不影响自动匹配）：</string>
+          </property>
+         </widget>
+         <widget class="QPushButton" name="importCalibResultButton_2">
+          <property name="geometry">
+           <rect>
+            <x>210</x>
+            <y>170</y>
+            <width>95</width>
+            <height>30</height>
+           </rect>
+          </property>
+          <property name="text">
+           <string>更新拼接方式</string>
           </property>
          </widget>
         </widget>

@@ -7,16 +7,50 @@ from typing import Optional
 import cv2.typing
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot, pyqtSignal, Qt, QSize
-from PyQt6.QtGui import QImage, QPixmap, QIcon
+from PyQt6.QtGui import QImage, QPixmap, QIcon, QPen
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QSpinBox, QMainWindow, QWidget, QGraphicsScene, QTableWidgetItem
 
 from QtUI.Ui_CalibBoardStitcher import Ui_CalibBoardStitcher
 
-class ButtonClickedEvent(Enum):
-    GEN_CALIB_BOARD_IMG_BTN_CLICKED = 1
-    LOAD_SUB_IMG_SEQ_BTN_CLICKED = 2
-    IMPORT_CALIB_RESULT_BTN_CLICKED = 3
-    SAVE_CALIB_RESULT_BUTTON = 4
+class DraggablePixmapItem(QGraphicsPixmapItem):
+    def __init__(self, pixmap):
+        super().__init__(pixmap)
+        self.setFlag(self.GraphicsItemFlag.ItemIsMovable)
+        self.setFlag(self.GraphicsItemFlag.ItemIsSelectable)
+        self.setAcceptHoverEvents(True)
+
+    def mousePressEvent(self, event):
+        """
+        鼠标按压事件
+        """
+        # 设置透明度为0.5
+        self.setOpacity(0.5)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        """
+        鼠标释放事件
+        """
+        # 设置透明度为1.0
+        self.setOpacity(1.0)
+        super().mouseReleaseEvent(event)
+
+    def paint(self, painter, option, widget=None):
+        super().paint(painter, option, widget)
+        if self.isSelected():
+            pen = QPen(Qt.GlobalColor.red)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashOffset(5)
+            pen.setDashPattern([3, 40])
+            pen.setWidth(1)
+            painter.setPen(pen)
+            painter.setBrush(Qt.GlobalColor.transparent)
+            painter.drawRect(self.boundingRect())
+        else:
+            painter.setPen(Qt.GlobalColor.transparent)
+            painter.setBrush(Qt.GlobalColor.transparent)
+            painter.drawRect(self.boundingRect())
+
 
 class SubImage:
     def __init__(self, id: str, img_path: str):
@@ -32,14 +66,44 @@ class SubImage:
             Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
-        #self.pixmap = QPixmap.fromImage(self.q_image)
-        #self.pixmap_item = QGraphicsPixmapItem(self.pixmap)
         self.thumbnail_pixmap = QPixmap.fromImage(thumbnail)
+        self._original_draggable_pixmap_item = None
+        self._transformed_draggable_pixmap_item = None
         self.enabled = False
 
     @property
     def q_image(self):
         return QImage(self.img_path)
+
+    @property
+    def transformed_draggable_pixmap_item(self) -> DraggablePixmapItem:
+        if self._transformed_draggable_pixmap_item is None:
+            self._transformed_draggable_pixmap_item = DraggablePixmapItem(QPixmap.fromImage(self.q_image))
+        return self._transformed_draggable_pixmap_item
+
+    @property
+    def original_draggable_pixmap_item(self) -> DraggablePixmapItem:
+        if self._original_draggable_pixmap_item is None:
+            self._original_draggable_pixmap_item = DraggablePixmapItem(QPixmap.fromImage(self.q_image))
+        return self._original_draggable_pixmap_item
+
+    def update_transformed_img(self, img: cv2.typing.MatLike):
+        """
+        将子图像更新为校准变换后的图像
+        :param img: 子图像
+        """
+        h, w = img.shape[0:2]
+        self._transformed_draggable_pixmap_item = DraggablePixmapItem(
+            QPixmap.fromImage(QImage(img, w, h, w * 3, QImage.Format.Format_RGB888))
+        )
+
+class ButtonClickedEvent(Enum):
+    GEN_CALIB_BOARD_IMG_BTN_CLICKED = 1
+    LOAD_SUB_IMG_SEQ_BTN_CLICKED = 2
+    IMPORT_CALIB_RESULT_BTN_CLICKED = 3
+    EXEC_AUTO_MATCH_BTN_CLICKED = 4
+    SAVE_CALIB_RESULT_BUTTON = 5
+
 
 class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
     _set_calib_board_img_signal = pyqtSignal(QImage)
@@ -80,6 +144,9 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         )
         self.importCalibResultButton.clicked.connect(
             lambda: self._btn_clicked(ButtonClickedEvent.IMPORT_CALIB_RESULT_BTN_CLICKED)
+        )
+        self.execAutoMatchButton.clicked.connect(
+            lambda: self._btn_clicked(ButtonClickedEvent.EXEC_AUTO_MATCH_BTN_CLICKED)
         )
         self.saveCalibResultButton.clicked.connect(
             lambda: self._btn_clicked(ButtonClickedEvent.SAVE_CALIB_RESULT_BUTTON)
@@ -122,9 +189,8 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         target_h = self.mainGraphicView.height()
         logging.debug("Widget: {}, size: {}".format("mainGraphicView", (target_w, target_h)))
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        y = img.shape[0]
-        x = img.shape[1]
-        frame = QImage(rgb_img, x, y, x * 3, QImage.Format.Format_RGB888)
+        h, w = img.shape[0:2]
+        frame = QImage(rgb_img, w, h, w * 3, QImage.Format.Format_RGB888)
         self._set_calib_board_img_signal.emit(frame)
 
     def get_row_count(self) -> int:
@@ -191,6 +257,9 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
             with self._select_folder_lock:
                 return self._selected_folder
 
+    def set_update_img_transform_callback(self):
+        pass
+
     @pyqtSlot(ButtonClickedEvent)
     def _btn_clicked(self, event: ButtonClickedEvent):
         """
@@ -242,13 +311,18 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         row_id = self.tableWidget.rowCount()
         self.tableWidget.insertRow(row_id)
 
-        # 设置内容
+        # 设置"子图像序列"列表区域内容
         self.tableWidget.setItem(row_id, 0, QTableWidgetItem(sub_img.id))
         self.tableWidget.setItem(row_id, 1, QTableWidgetItem(str(sub_img.enabled)))
         item = QTableWidgetItem()
         item.setIcon(QIcon(sub_img.thumbnail_pixmap))
         self.tableWidget.setItem(row_id, 2, item)
         self.tableWidget.setItem(row_id, 3, QTableWidgetItem("[]"))
+
+        # 向主画布中添加子图像
+        #self._main_scene.addItem(sub_img.original_draggable_pixmap_item)
+        #self._main_scene.update()
+
 
     @pyqtSlot(str, str)
     def _select_folder(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
