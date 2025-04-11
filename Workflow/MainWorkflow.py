@@ -199,14 +199,14 @@ class MainWorkflow:
         """
         当前工作流的主逻辑，不应当在主线程中使用
         """
-        self._ui.set_cb_changed_callback(
+        self._ui.set_btn_clicked_callback(
             ButtonClickedEvent.GEN_CALIB_BOARD_IMG_BTN_CLICKED,
             lambda : self._try_load_task(
                 self._gen_calib_board_img_task,
                 task_name="Generate CalibBoard image task"
             ),
         )
-        self._ui.set_cb_changed_callback(
+        self._ui.set_btn_clicked_callback(
             ButtonClickedEvent.LOAD_SUB_IMG_SEQ_BTN_CLICKED,
             lambda : self._try_load_task(
                 lambda : self._load_sub_image_seq_task(
@@ -215,7 +215,7 @@ class MainWorkflow:
                 task_name="Load sub image sequence task"
             ),
         )
-        self._ui.set_cb_changed_callback(
+        self._ui.set_btn_clicked_callback(
             ButtonClickedEvent.EXEC_AUTO_MATCH_BTN_CLICKED,
             lambda : self._try_load_task(
                 self._exec_auto_match_task,

@@ -167,7 +167,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self._select_folder_lock = threading.Lock()
         self._selected_folder = None
 
-    def set_cb_changed_callback(self, event: ButtonClickedEvent, callback):
+    def set_btn_clicked_callback(self, event: ButtonClickedEvent, callback):
         """
         设置按钮单机事件的回调函数
 
