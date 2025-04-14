@@ -13,26 +13,8 @@ from CalibBoardElements.CalibBoardObj import CalibBoardObj
 from CalibBoardElements.QrTarget import QrTarget
 from CalibBoardDetector.QrDetector import QrDetector
 from CalibBoardGenerator.BoardGenerator import BoardGenerator
+from CalibBoardResult.CalibResult import MatchedPoint, CalibResult
 from Utils.Utils import logging_config
-
-class MatchedPoints:
-    def __init__(self, img_id: str, cb_point: list[float, float], img_point: list[float, float]):
-        self.img_id = img_id
-        self.cb_point = cb_point
-        self.img_point = img_point
-
-    def __str__(self):
-        return ("MatchedPoints: {} on CalibBoard and {} on image id: {}."
-                .format(self.cb_point, self.img_point, self.img_id))
-
-    def __repr__(self):
-        return self.__str__()
-
-    def dict(self) -> dict:
-        return {
-            "cb_point": self.cb_point,
-            "img_point": self.img_point
-        }
 
 
 class Stitcher:
@@ -53,7 +35,7 @@ class Stitcher:
 
         pass
 
-    def match(self, img:cv2.typing.MatLike, img_id: str) -> list[MatchedPoints]:
+    def match(self, img:cv2.typing.MatLike, img_id: str) -> list[MatchedPoint]:
         matched_points = []
         # 1. Try to find Qr Code.
         qr_targets = self._qr_detector.detect(img)
@@ -66,7 +48,7 @@ class Stitcher:
                     cb_point = cb_box.vertex[i]
                     qr_point = target.vertex[i]
                     matched_points.append(
-                        MatchedPoints(img_id, cb_point, qr_point)
+                        MatchedPoint(img_id, cb_point, qr_point)
                     )
         else:
             # TODO
@@ -80,7 +62,7 @@ class Stitcher:
 
     def stitch_full_cover(self,
         base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
-        partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoints]
+        partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint]
     ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
         """
         直接将整张子图覆盖拼接到大图中
@@ -140,10 +122,10 @@ class Stitcher:
         return base_img, base_img_mask
 
     def stitch_to(self,
-        base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
-        partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoints],
-        method: StitchMethod = StitchMethod.FULL_COVER
-    ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
+                  base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
+                  partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint],
+                  method: StitchMethod = StitchMethod.FULL_COVER
+                  ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
         """
         按照指定方式拼接单个图像
 
@@ -227,7 +209,7 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
     stitcher = None
     base_img = None
     base_mask = None
-    results = {"matched_points": {}}
+    calib_result = None
 
     for file in os.listdir(calib_img_dir):
         file_path = os.path.join(calib_img_dir, file)
@@ -237,11 +219,7 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
         if stitcher is None:
             stitcher = Stitcher.from_qr_img(img)
             if stitcher:
-                results["rc"] = stitcher.board_cfg.row_count
-                results["cc"] = stitcher.board_cfg.col_count
-                results["px_size"] = stitcher.board_cfg.qr_pixel_size
-                results["qr_border"] = stitcher.board_cfg.qr_border
-                break
+                calib_result = CalibResult(board_obj=stitcher.board_cfg)
 
     # 执行标定算法
     for file in os.listdir(calib_img_dir):
@@ -250,16 +228,15 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
         if base_img is None:
             base_img = np.zeros(stitcher.board_cfg.img_shape, dtype=np.uint8)
             base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
-            results["base_width"] = base_img.shape[1]
-            results["base_height"] = base_img.shape[0]
 
         start = time.perf_counter()
         matched_points = stitcher.match(img, file) #0.1655s
         end = time.perf_counter()
         logging.info("stitcher.match() spend: {}".format(end - start))
 
-        for matched in matched_points:
-            logging.info(matched)
+        for matched_point in matched_points:
+            logging.info(matched_point)
+            calib_result.add_matched_point(matched_point)
 
         # 找到匹配点对，进行拼接
         if len(matched_points) > 0:
@@ -268,17 +245,11 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
             end = time.perf_counter()
             logging.info("stitcher.stitch_full_cover() spend: {}".format(end - start))
 
-            results["matched_points"][file] = []
-            for p in matched_points:
-                results["matched_points"][file].append(p.dict())
-
-
     if len(export_img) > 0:
         cv2.imwrite(export_img, base_img)
 
     if len(export_json) > 0:
-        with open(export_json, 'w', encoding='utf-8') as f:
-            json.dump(results, f, ensure_ascii=False, indent=4)
+        calib_result.save(export_json)
 
 
 def stitch(img_dir: str, json_file: str, export_img: str=""):
@@ -306,7 +277,7 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 
         matched_points = []
         for point in data["matched_points"][file]:
-            matched_point = MatchedPoints(file, cb_point=point["cb_point"], img_point=point["img_point"])
+            matched_point = MatchedPoint(file, cb_point=point["cb_point"], img_point=point["img_point"])
             print(matched_point)
             matched_points.append(matched_point)
 
@@ -322,6 +293,6 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    #calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313.json", export_img="./temp/0313.jpg")
-    stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
+    calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313_new.json", export_img="./temp/0313.jpg")
+    #stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
 

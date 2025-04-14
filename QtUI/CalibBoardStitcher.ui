@@ -51,7 +51,7 @@
        <number>5</number>
       </property>
       <item>
-       <widget class="QGraphicsView" name="mainGraphicView"/>
+       <widget class="QGraphicsView" name="mainGraphicsView"/>
       </item>
      </layout>
     </item>
