@@ -164,10 +164,10 @@ class CalibResult:
             matched_points = self._matched_imgs[img_id]
             for i in range(len(matched_points)):
                 for j in range(i + 1, len(matched_points)):
-                    img_dx = matched_points[i]["img_point"][0] - matched_points[j]["img_point"][0]
-                    img_dy = matched_points[i]["img_point"][1] - matched_points[j]["img_point"][1]
-                    cb_dx = matched_points[i]["cb_point"][0] - matched_points[j]["cb_point"][0]
-                    cb_dy = matched_points[i]["cb_point"][1] - matched_points[j]["cb_point"][1]
+                    img_dx = matched_points[i].img_point[0] - matched_points[j].img_point[0]
+                    img_dy = matched_points[i].img_point[1] - matched_points[j].img_point[1]
+                    cb_dx = matched_points[i].cb_point[0] - matched_points[j].cb_point[0]
+                    cb_dy = matched_points[i].cb_point[1] - matched_points[j].cb_point[1]
 
                     cos = safe_cos([img_dx, img_dy], [cb_dx, cb_dy])
                     angle = math.degrees(math.acos(cos))
