@@ -54,18 +54,26 @@ class CalibResult:
         """
         return self._board_obj
 
-    def get_matched_points(self) -> list[MatchedPoint]:
+    def get_matched_img_id(self) -> list[str]:
+        """
+        获取img_id列表
+
+        :return: img_id
+        """
+        return list(self._matched_imgs.keys())
+
+
+    def get_matched_points(self, img_id: str) -> list[MatchedPoint]:
         """
         获取匹配点对
 
+        :img_id: 要查询的img_id
         :return: list[MatchedPoints]
         """
-        matched_points = []
-
-        for img_id in self._matched_imgs:
-            matched_points.append(self._matched_imgs[img_id])
-
-        return matched_points
+        if img_id in self._matched_imgs:
+            return self._matched_imgs[img_id]
+        else:
+            return []
 
     @staticmethod
     def load_from_file(file_path: str):
@@ -89,12 +97,14 @@ class CalibResult:
         result = CalibResult(board_obj)
 
         for img_id in data["matched_images"]:
-            matched_points = MatchedPoint(
-                img_id,
-                cb_point=data["matched_images"][img_id]["cb_point"],
-                img_point=data["matched_images"][img_id]["img_point"],
-            )
-            result.add_matched_point(matched_points)
+            for matched in data["matched_images"][img_id]:
+                result.add_matched_point(
+                    MatchedPoint(
+                        img_id,
+                        cb_point=matched["cb_point"],
+                        img_point=matched["img_point"],
+                    )
+                )
 
         return result
 

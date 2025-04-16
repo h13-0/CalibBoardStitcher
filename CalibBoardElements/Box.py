@@ -55,3 +55,19 @@ class Box:
     @property
     def lb(self):
         return self._vertex["lb"]
+
+    @property
+    def top(self):
+        return self._vertex["lt"][1]
+
+    @property
+    def left(self):
+        return self._vertex["lt"][0]
+
+    @property
+    def bottom(self):
+        return self._vertex["rb"][1]
+
+    @property
+    def right(self):
+        return self._vertex["rb"][0]

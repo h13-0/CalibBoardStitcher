@@ -42,7 +42,7 @@ class Stitcher:
         if len(qr_targets) > 0:
             for target in qr_targets:
                 # 1.1 获取该二维码在标准标定板中的位置
-                cb_box = self._board.cal_qr_box(row_id=target.row_id, col_id=target.col_id)
+                cb_box = self._board.calc_qr_box(row_id=target.row_id, col_id=target.col_id)
 
                 for i in range(4):
                     cb_point = cb_box.vertex[i]
@@ -60,6 +60,58 @@ class Stitcher:
         FULL_COVER = "full_cover"  # 直接将整张子图覆盖拼接，覆盖优先级为列表靠后图像覆盖靠前的图像
         GRID_COVER = "grid_cover"  # 将MatchedPoints插分为网格，然后将子图按照网格切割后覆盖拼接
 
+    def stitch_full_gen_wrapped_partial(self,
+            partial_img: cv2.typing.MatLike,
+            matched_points: list[MatchedPoint]
+        ) -> tuple[cv2.typing.MatLike, Box]:
+        """
+        生成完整仿射变换后的子图
+
+        :param partial_img: 待拼接的子图
+        :param matched_points: 匹配点对
+        :return: RGBA四通道图像
+        """
+        # 0. 预处理数据
+        ## 0.1 生成与partial_img等大小的mask
+        partial_h, partial_w = partial_img.shape[0:2]
+        #partial_mask = np.ones((partial_h, partial_w), dtype= np.uint8) # 0.01s
+        ## 0.2 为partial_img添加透明通道
+        if partial_img.shape[2] == 3:
+            b, g, r = cv2.split(partial_img)
+            alpha = np.ones((partial_h, partial_w), dtype= np.uint8) * 255
+            partial_img = cv2.merge((b, g, r, alpha))
+
+        # 1. 计算变换矩阵均值
+        src_points = np.array([point.img_point for point in matched_points])
+        dst_points = np.array([point.cb_point for point in matched_points])
+        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
+
+        # 2. 计算仿射后的图像区域，并划定ROI加速运算
+        transformed_box = Box(
+            lt=[0, 0], rt=[partial_w - 1, 0],
+            rb=[partial_w - 1, partial_h - 1], lb=[0, partial_h - 1]
+        ).warp_affine(m)
+        ## 仿射后子图在大图中的ROI顶点
+        pos_x1 = math.floor(min([point[0] for point in transformed_box.vertex]))
+        pos_x2 = math.ceil(max([point[0] for point in transformed_box.vertex]))
+        pos_y1 = math.floor(min([point[1] for point in transformed_box.vertex]))
+        pos_y2 = math.ceil(max([point[1] for point in transformed_box.vertex]))
+
+        # 3. 对ROI区域进行仿射，加速仿射运算
+        ## 3.1 重新计算变换矩阵
+        dst_points = np.array([[point.cb_point[0] - pos_x1, point.cb_point[1] - pos_y1] for point in matched_points])
+        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
+
+        ## 4.2 执行仿射变换
+        start = time.perf_counter()
+        partial_img = cv2.warpAffine(partial_img, m, (pos_x2 - pos_x1 + 1, pos_y2 - pos_y1 + 1))   # 0.0018s
+        end = time.perf_counter()
+        logging.debug("cv2.warpAffine() spend: {}".format(end - start))
+
+        return partial_img, transformed_box
+
+
+
     def stitch_full_cover(self,
         base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
         partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint]
@@ -76,48 +128,26 @@ class Stitcher:
         # 0. 获取必要参数
         base_h, base_w = base_img.shape[0:2]
 
-        # 1. 生成与partial_img等大小的mask
-        partial_h, partial_w = partial_img.shape[0:2]
-        partial_mask = np.ones((partial_w, partial_h),dtype= np.uint8) # 0.01s
+        # 1. 对子图进行仿射变换
+        wrapped_partial, pos = self.stitch_full_gen_wrapped_partial(partial_img, matched_points)
 
-        # 2. 计算变换矩阵均值
-        src_points = np.array([point.img_point for point in matched_points])
-        dst_points = np.array([point.cb_point for point in matched_points])
-        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
+        ## 1.1 将位置转换为整数
+        pos_l = math.floor(pos.left)
+        pos_r = math.ceil(pos.right)
+        pos_t = math.floor(pos.top)
+        pos_b = math.ceil(pos.bottom)
+        ## 1.2 计算主图像ROI区域
+        roi_l = max(pos_l, 0)
+        roi_r = min(pos_r, base_w - 1)
+        roi_t = max(pos_t, 0)
+        roi_b = min(pos_b, base_h - 1)
 
-        # 3. 计算仿射后的图像区域，并划定ROI加速运算
-        transformed_box = Box(
-            lt=[0, 0], rt=[partial_w - 1, 0],
-            rb=[partial_w - 1, partial_h - 1], lb=[0, partial_h - 1]
-        ).warp_affine(m)
-        left = math.floor(min([point[0] for point in transformed_box.vertex]))
-        right = math.ceil(max([point[0] for point in transformed_box.vertex]))
-        top = math.floor(min([point[1] for point in transformed_box.vertex]))
-        button = math.ceil(max([point[1] for point in transformed_box.vertex]))
-
-        # 4. 对ROI区域进行仿射，加速仿射运算
-        ## 4.1 重新计算变换矩阵
-        #src_points = np.array([point.img_point for point in matched_points])
-        dst_points = np.array([[point.cb_point[0] - left, point.cb_point[1] - top] for point in matched_points])
-        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
-
-        start = time.perf_counter()
-        ## 4.2 由于子图图像范围可能大于标定板范围，故需要限幅
-        l = max(left, 0)
-        r = min(right, base_w - 1)
-        t = max(top, 0)
-        b = min(button, base_h - 1)
-        partial_mask = cv2.warpAffine(partial_mask, m, (r - l + 1, b - t + 1)) # 0.0018s
-        partial_img = cv2.warpAffine(partial_img, m, (r - l + 1, b - t + 1))   # 0.0018s
-        end = time.perf_counter()
-        logging.debug("cv2.warpAffine() spend: {}".format(end - start))
-
-        # 5. 将变换后的子图拼接回原图像
-        base_img_roi = base_img[t:b+1, l:r+1]
-        partial_img_roi = partial_img
-        partial_mask_roi = partial_mask
-        partial_mask_roi_bool = partial_mask_roi != 0
-        base_img_roi[partial_mask_roi_bool] = partial_img_roi[partial_mask_roi_bool] #0.03
+        # 2. 将变换后的子图按照覆盖方式拼接回原图像
+        base_img_roi = base_img[roi_t:roi_b + 1, roi_l:roi_r + 1]
+        wrapped_partial_roi = wrapped_partial[roi_t - pos_t:roi_b - pos_t + 1, roi_l - pos_l:roi_r - pos_l + 1, 0:3]
+        wrapped_mask_roi = wrapped_partial[roi_t - pos_t:roi_b - pos_t + 1, roi_l - pos_l:roi_r - pos_l + 1, 3]
+        wrapped_mask_roi_bool = wrapped_mask_roi == 255
+        base_img_roi[wrapped_mask_roi_bool] = wrapped_partial_roi[wrapped_mask_roi_bool] #0.03
 
         return base_img, base_img_mask
 
@@ -238,8 +268,8 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
             logging.info(matched_point)
             calib_result.add_matched_point(matched_point)
 
-        # 找到匹配点对，进行拼接
-        if len(matched_points) > 0:
+        if len(export_img) > 0 and len(matched_points) > 0:
+            # 找到匹配点对，进行拼接
             start = time.perf_counter()
             base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
             end = time.perf_counter()
@@ -253,34 +283,21 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
 
 
 def stitch(img_dir: str, json_file: str, export_img: str=""):
-    data = None
+    calib_result = CalibResult.load_from_file(json_file)
 
-    with open(json_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    board_obj = calib_result.get_calib_board_obj()
+    stitcher = Stitcher(board_obj)
 
-    board_cfg = CalibBoardObj(
-        row_count=data["rc"],
-        col_count=data["cc"],
-        qr_pixel_size=data["px_size"],
-        qr_border=data["qr_border"]
-    )
-    stitcher = Stitcher(board_cfg)
-
-    base_img = np.zeros((data["base_height"], data["base_width"], 3), dtype=np.uint8)
+    base_img = np.zeros(board_obj.img_shape, dtype=np.uint8)
     base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
 
-    for file in data["matched_points"]:
-        file_path = os.path.join(img_dir, file)
+    for img_id in calib_result.get_matched_img_id():
+        file_path = os.path.join(img_dir, img_id)
         if not os.path.exists(file_path):
             continue
         img = cv2.imread(file_path)
 
-        matched_points = []
-        for point in data["matched_points"][file]:
-            matched_point = MatchedPoint(file, cb_point=point["cb_point"], img_point=point["img_point"])
-            print(matched_point)
-            matched_points.append(matched_point)
-
+        matched_points = calib_result.get_matched_points(img_id)
         start = time.perf_counter()
         base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
         end = time.perf_counter()
@@ -293,6 +310,8 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    calibration(calib_img_dir="../datasets/stitch0313", export_json="./temp/0313_new.json", export_img="./temp/0313.jpg")
+    #calibration(calib_img_dir="../datasets/stitch0415", export_json="./temp/0415.json", export_img="./temp/0415.jpg")
+    #calibration(calib_img_dir="../datasets/0415sz/1", export_json="./temp/0415_sz.json", export_img="./temp/0415_sz.jpg")
     #stitch(img_dir="../datasets/stitch0407", json_file="./temp/0313.json", export_img="./temp/0407.jpg")
+    stitch(img_dir="../datasets/0415sz/4", json_file="./temp/0415_sz.json", export_img="./temp/0415_sz_pcb.jpg")
 
