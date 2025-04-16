@@ -1,6 +1,8 @@
 import json
 import logging
 
+import qrcode
+
 from CalibBoardElements.Box import Box
 
 class CalibBoardObj:
@@ -20,6 +22,8 @@ class CalibBoardObj:
         self._col_count     = col_count
         self._qr_pixel_size = qr_pixel_size
         self._qr_border     = qr_border
+        self._qr_version = -1
+
 
     @staticmethod
     def from_json(json_data:str):
@@ -44,7 +48,37 @@ class CalibBoardObj:
             logging.error("generate CalibBoardObj from json failed, msg: " + str(e))
         return result
 
-    def cal_qr_box(self, row_id: int, col_id: int) -> Box:
+    def calc_qr_version(self) -> int:
+        """
+        计算当前标定板所需qr version
+
+        :return: qr version
+        """
+        if self._qr_version < 0:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_H,
+                box_size=self.qr_pixel_size,
+                border=self.qr_border
+            )
+
+            data = {
+                "cid"       : self.col_count - 1,
+                "rid"       : self.row_count - 1,
+                "rc"        : self.row_count,
+                "cc"        : self.col_count,
+                "px_size"   : self.qr_pixel_size,
+                "qr_border" : self.qr_border
+            }
+            sorted_data = {}
+            for key in sorted(data.keys()):
+                sorted_data[key] = data[key]
+            qr.add_data(json.dumps(sorted_data))
+            qr.make(fit=True)
+            self._qr_version = qr.version
+        return self._qr_version
+
+    def calc_qr_box(self, row_id: int, col_id: int) -> Box:
         """
         计算指定位置的二维码本体顶点
 
@@ -86,8 +120,8 @@ class CalibBoardObj:
         根据字符串长度计算
         :return:
         """
-        # TODO
-        return (33 + self.qr_border * 2) * self._qr_pixel_size
+        size = (21 + (self.calc_qr_version() - 1) * 4 + self.qr_border * 2) * self.qr_pixel_size
+        return size
 
     @property
     def qr_size(self) -> int:
@@ -95,8 +129,8 @@ class CalibBoardObj:
         根据字符串长度计算
         :return:
         """
-        # TODO
-        return (33) * self._qr_pixel_size
+        size = (21 + (self.calc_qr_version() - 1) * 4) * self.qr_pixel_size
+        return size
 
     @property
     def img_size(self) -> tuple[int, int]:

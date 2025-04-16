@@ -10,9 +10,6 @@ from CalibBoardElements.QrObj import QrObj
 from CalibBoardGenerator.QrGenerator import QrGenerator
 
 class BoardGenerator:
-    def __init__(self):
-        self._qr_generator = QrGenerator()
-
     def gen_img(self, board:CalibBoardObj, progress_callback: Callable[[float], None]=None) -> cv2.typing.MatLike:
         """
         按照标定板配置生成标定板图像
@@ -21,6 +18,8 @@ class BoardGenerator:
         :param progress_callback: 进度回调函数，接收参数为float类型，值域[0, 100]
         :return: 标定板图像
         """
+        qr_generator = QrGenerator(board)
+
         # 输出图像
         result = None
         result_imgs = []
@@ -43,9 +42,9 @@ class BoardGenerator:
                     qr_obj = QrObj(
                         row_id=i,
                         col_id=j,
-                        board=board
+                        board_obj=board
                     )
-                    grid_img = self._qr_generator.gen_qr(qr_obj)
+                    grid_img = qr_generator.gen_qr(qr_obj)
                 else:
                     # 交错生成黑白格
                     # 当前为黑格
@@ -72,7 +71,7 @@ def main():
     )
     board_cfg = CalibBoardObj(
         row_count=30,
-        col_count=44
+        col_count=42
     )
     generator = BoardGenerator()
     img = generator.gen_img(board_cfg)
