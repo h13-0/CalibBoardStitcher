@@ -111,7 +111,6 @@ class Stitcher:
         return partial_img, transformed_box
 
 
-
     def stitch_full_cover(self,
         base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
         partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint]
@@ -152,10 +151,10 @@ class Stitcher:
         return base_img, base_img_mask
 
     def stitch_to(self,
-                  base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
-                  partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint],
-                  method: StitchMethod = StitchMethod.FULL_COVER
-                  ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
+            base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
+            partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint],
+            method: StitchMethod = StitchMethod.FULL_COVER
+        ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
         """
         按照指定方式拼接单个图像
 

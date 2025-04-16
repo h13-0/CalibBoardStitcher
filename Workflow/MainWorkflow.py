@@ -27,7 +27,6 @@ class MainWorkflow:
 
         # 标定板拼接对象
         self._board_obj = None
-        self._stitcher = None
         self._board_generator = BoardGenerator()
         self._board_img = None
 
@@ -78,7 +77,7 @@ class MainWorkflow:
             file_path = os.path.join(folder, file_name)
             try:
                 self._ui.add_sub_image(file_name, file_path)
-                self._ui.set_sub_image_status(file_name, SubImageStatus.HIDE_CLEAR)
+                self._ui.set_sub_image_status(file_name, SubImageStatus.HIDE)
                 self._ui.set_progress_bar_value(int((i + 1) / file_num * 100))
                 self._sub_image_paths.append(file_path)
             except Exception as e:
@@ -94,8 +93,6 @@ class MainWorkflow:
         self._ui.set_progress_bar_value(0)
 
         stitcher = None
-        base_img = None
-        base_mask = None
         calib_result = None
         board_obj = None
         img_nums = len(self._sub_image_paths)
@@ -108,15 +105,13 @@ class MainWorkflow:
                 if stitcher:
                     calib_result = CalibResult(board_obj=stitcher.board_cfg)
                     board_obj = calib_result.get_calib_board_obj()
+                    break
 
         # 执行标定算法
         for i in range(img_nums):
             file_path = self._sub_image_paths[i]
             img_id = os.path.basename(file_path)
             img = cv2.imread(file_path)
-            if base_img is None:
-                base_img = np.zeros(stitcher.board_cfg.img_shape, dtype=np.uint8)
-                base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
 
             start = time.perf_counter()
             matched_points = stitcher.match(img, img_id)  # 0.1655s
@@ -130,9 +125,14 @@ class MainWorkflow:
             # 找到匹配点对，进行拼接
             if len(matched_points) > 0:
                 start = time.perf_counter()
-                base_img, base_mask = stitcher.stitch_full_cover(base_img, base_mask, img, matched_points)
+                transformed, box = stitcher.stitch_full_gen_wrapped_partial(img, matched_points)
                 end = time.perf_counter()
-                logging.info("stitcher.stitch_full_cover() spend: {}".format(end - start))
+                logging.info("stitcher.stitch_full_gen_wrapped_partial() spend: {}".format(end - start))
+
+                self._ui.update_transformed_sub_img(img_id, transformed)
+                self._ui.set_sub_image_pos(img_id, [box.lt[0], box.lt[1]])
+                self._ui.set_sub_image_status(img_id, SubImageStatus.SHOW_TRANSFORMED_LOCKED)
+
                 self._ui.set_progress_bar_value(int((i + 1) / img_nums * 80))
 
         if stitcher is not None:
@@ -142,8 +142,8 @@ class MainWorkflow:
                 board_obj,
                 progress_callback=lambda v: self._ui.set_progress_bar_value(int(v / 5) + 80)
             )
-            calib_board_scale = calib_result.calc_mean_sub_img_scale()
-            board_img = cv2.resize(board_img, (0, 0), fx=calib_board_scale, fy=calib_board_scale)
+            #calib_board_scale = calib_result.calc_mean_sub_img_scale()
+            #board_img = cv2.resize(board_img, (0, 0), fx=calib_board_scale, fy=calib_board_scale)
             self._ui.set_calib_board_img(board_img)
 
         else:

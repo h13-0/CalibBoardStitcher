@@ -70,8 +70,8 @@ def main():
         level=logging.DEBUG
     )
     board_cfg = CalibBoardObj(
-        row_count=30,
-        col_count=42
+        row_count=40,
+        col_count=43
     )
     generator = BoardGenerator()
     img = generator.gen_img(board_cfg)
