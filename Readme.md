@@ -1,6 +1,3 @@
-# 图像标定与拼接
-## 项目功能规划
+# 图像标定拼接工具
 
-
-
-
+![](docs/imgs/CalibBoardStitcher.jpg)
