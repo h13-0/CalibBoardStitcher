@@ -1,5 +1,4 @@
 import logging
-import sys
 import threading
 from enum import Enum
 from types import MethodType
@@ -8,63 +7,12 @@ from typing import Optional
 import cv2.typing
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot, pyqtSignal, Qt, QSize, QPointF
-from PyQt6.QtGui import QImage, QPixmap, QIcon, QPen
+from PyQt6.QtGui import QImage, QPixmap, QIcon
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QSpinBox, QMainWindow, QWidget, QGraphicsScene, QTableWidgetItem
 
+from CalibBoardResult.CalibResult import MatchedPoint
 from QtUI.Ui_CalibBoardStitcher import Ui_CalibBoardStitcher
-
-class DraggablePixmapItem(QGraphicsPixmapItem):
-    def __init__(self, pixmap, pos: tuple[float, float]=(0, 0)):
-        super().__init__(pixmap)
-        self.setPos(pos[0], pos[1])
-
-    def mousePressEvent(self, event):
-        """
-        鼠标按压事件
-        """
-        # 设置透明度为0.5
-        self.setOpacity(0.5)
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        """
-        鼠标释放事件
-        """
-        # 设置透明度为1.0
-        self.setOpacity(1.0)
-        super().mouseReleaseEvent(event)
-
-    def paint(self, painter, option, widget=None):
-        super().paint(painter, option, widget)
-        if self.isSelected():
-            pen = QPen(Qt.GlobalColor.red)
-            pen.setStyle(Qt.PenStyle.DashLine)
-            pen.setDashOffset(5)
-            pen.setDashPattern([3, 40])
-            pen.setWidth(1)
-            painter.setPen(pen)
-            painter.setBrush(Qt.GlobalColor.transparent)
-            painter.drawRect(self.boundingRect())
-        else:
-            painter.setPen(Qt.GlobalColor.transparent)
-            painter.setBrush(Qt.GlobalColor.transparent)
-            painter.drawRect(self.boundingRect())
-
-    def lock(self):
-        """
-        锁定对象，禁止拖动
-        """
-        self.setFlag(self.GraphicsItemFlag.ItemIsMovable, False)
-        self.setFlag(self.GraphicsItemFlag.ItemIsSelectable, False)
-        self.setAcceptHoverEvents(False)
-
-    def unlock(self):
-        """
-        取消锁定对象，允许拖动
-        """
-        self.setFlag(self.GraphicsItemFlag.ItemIsMovable)
-        self.setFlag(self.GraphicsItemFlag.ItemIsSelectable)
-        self.setAcceptHoverEvents(True)
+from QtUI.Widgets.SubImagePixmapItem import SubImagePixmapItem
 
 
 class SubImageStatus(Enum):
@@ -75,53 +23,56 @@ class SubImageStatus(Enum):
     SHOW_TRANSFORMED_MOVABLE = 4    # 显示可移动的仿射后图像
 
 class SubImage:
-    def __init__(self, id: str, img_path: str, pos: tuple=(0, 0)):
+    def __init__(self, img_id: str, img_path: str, pos: tuple=(0, 0)):
         """
-        子图像对象，存储QImage、Pixmap、PixmapItem等
-        :param id: 图像id
-        :param img: cv2格式的BGR图像
+        子图像对象，管理UI中的子图像
+
+        :param img_id: 图像id
+        :param img_path: 图像文件路径
+        :param pos: 子图像坐标
         """
-        self.id = id
+        self.img_id = img_id
         self.img_path = img_path
-        thumbnail = self.q_image.scaled(
+        q_image = QImage(img_path)
+        thumbnail = q_image.scaled(
             100, 100,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
         self.thumbnail_pixmap = QPixmap.fromImage(thumbnail)
-        self._original_draggable_pixmap_item = None
-        self._transformed_draggable_pixmap_item = None
+
+        self._original_draggable_pixmap_item = SubImagePixmapItem(QPixmap(q_image))
+        self._transformed_draggable_pixmap_item = SubImagePixmapItem(QPixmap())
+        self._original_draggable_pixmap_item.set_double_clicked_callback(self._double_clicked)
+        self._transformed_draggable_pixmap_item.set_double_clicked_callback(self._double_clicked)
+
         self.enabled = False
         self._pos = pos
         self.status = SubImageStatus.SHOW_ORIGINAL_LOCKED
+        self._double_clicked_callback = None
 
-
-    @property
-    def q_image(self):
-        return QImage(self.img_path)
-
-    @property
-    def original_draggable_pixmap_item(self) -> DraggablePixmapItem:
-        if self._original_draggable_pixmap_item is None:
-            self._original_draggable_pixmap_item = DraggablePixmapItem(QPixmap.fromImage(self.q_image), pos=self._pos)
-            #self._original_draggable_pixmap_item.setCacheMode(QGraphicsPixmapItem.CacheMode.DeviceCoordinateCache)
+    def get_original_pixmap_item(self) -> SubImagePixmapItem:
+        """
+        获取原始图像对应的PixmapItem
+        """
         return self._original_draggable_pixmap_item
 
-    @original_draggable_pixmap_item.setter
-    def original_draggable_pixmap_item(self, item: DraggablePixmapItem):
-        del self._original_draggable_pixmap_item
-        self._original_draggable_pixmap_item = item
-
-    @property
-    def transformed_draggable_pixmap_item(self) -> DraggablePixmapItem:
-        if self._transformed_draggable_pixmap_item is None:
-            self._transformed_draggable_pixmap_item = DraggablePixmapItem(QPixmap.fromImage(self.q_image), pos=self._pos)
+    def get_transformed_pixmap_item(self) -> SubImagePixmapItem:
+        """
+        获取变换后的PixmapItem
+        """
         return self._transformed_draggable_pixmap_item
 
-    @transformed_draggable_pixmap_item.setter
-    def transformed_draggable_pixmap_item(self, item: DraggablePixmapItem):
-        del self._transformed_draggable_pixmap_item
-        self._transformed_draggable_pixmap_item = item
+    def update_transformed_img(self, img: cv2.typing.MatLike):
+        """
+        将子图像更新为校准变换后的图像
+        :param img: 变换后的子图像，需要为BGRA四通道
+        """
+        h, w = img.shape[0:2]
+        self._transformed_draggable_pixmap_item.setPixmap(
+            QPixmap.fromImage(QImage(img, w, h, w * 4, QImage.Format.Format_ARGB32))
+        )
+
 
     def set_pos(self, pos: tuple[float, float]):
         """
@@ -135,16 +86,44 @@ class SubImage:
         if self._transformed_draggable_pixmap_item is not None:
             self._transformed_draggable_pixmap_item.setPos(QPointF(pos[0], pos[1]))
 
-    def update_transformed_img(self, img: cv2.typing.MatLike):
+
+
+    def set_clicked_callback(self, callback):
         """
-        将子图像更新为校准变换后的图像
-        :param img: 变换后的子图像，需要为BGRA四通道
+        设置SubImage的任意控件的双击回调函数
+
+        :param callback: 回调函数
         """
-        h, w = img.shape[0:2]
-        self._transformed_draggable_pixmap_item = DraggablePixmapItem(
-            QPixmap.fromImage(QImage(img, w, h, w * 4, QImage.Format.Format_ARGB32)),
-            self._pos
-        )
+        self._double_clicked_callback = callback
+
+    def switch_to(self, status: SubImageStatus):
+        """
+        切换子图像对象的状态
+        :param status: 要切换到的状态
+        """
+        if status == SubImageStatus.HIDE:
+            self._original_draggable_pixmap_item.setVisible(False)
+            self._transformed_draggable_pixmap_item.setVisible(False)
+        elif status == SubImageStatus.SHOW_ORIGINAL_LOCKED:
+            self._original_draggable_pixmap_item.setVisible(True)
+            self._transformed_draggable_pixmap_item.setVisible(False)
+            self._original_draggable_pixmap_item.lock()
+        elif status == SubImageStatus.SHOW_ORIGINAL_MOVABLE:
+            self._original_draggable_pixmap_item.setVisible(True)
+            self._transformed_draggable_pixmap_item.setVisible(False)
+            self._original_draggable_pixmap_item.unlock()
+        elif status == SubImageStatus.SHOW_TRANSFORMED_LOCKED:
+            self._original_draggable_pixmap_item.setVisible(False)
+            self._transformed_draggable_pixmap_item.setVisible(True)
+            self._transformed_draggable_pixmap_item.lock()
+        elif status == SubImageStatus.SHOW_TRANSFORMED_MOVABLE:
+            self._original_draggable_pixmap_item.setVisible(False)
+            self._transformed_draggable_pixmap_item.setVisible(True)
+            self._transformed_draggable_pixmap_item.unlock()
+
+    def _double_clicked(self):
+        if self._double_clicked_callback is not None:
+            self._double_clicked_callback()
 
 class ButtonClickedEvent(Enum):
     GEN_CALIB_BOARD_IMG_BTN_CLICKED = 1
@@ -161,9 +140,10 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
     # mainGraphicsView中的子图像相关信号
     _update_sub_image_signal = pyqtSignal(str)
 
-    # TODO: 将下方信号并入上一条信号中
+    # TODO: 将下方信号并入_update_sub_image_signal信号中
     _del_sub_image_signal = pyqtSignal(str)
     _add_sub_image_signal = pyqtSignal(SubImage)
+    _set_sub_image_matched_points_signal = pyqtSignal(str, list)
 
     _select_folder_signal = pyqtSignal(str, str)
     def __init__(self):
@@ -174,7 +154,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self._btn_clicked_cb_map = {}
         # 图像Item
         ## 标定板图像Item
-        self._calib_board_item = None
+        self._calib_board_item = QGraphicsPixmapItem(QPixmap())
 
         ## 子图像Items
         self._sub_image_lock = threading.Lock()
@@ -191,6 +171,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self.mainGraphicsView.setScene(self._main_scene)
         self.mainGraphicsView.wheelEvent = MethodType(self._wheel_event, self.mainGraphicsView)
         self.mainGraphicsView.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
+        self._main_scene.addItem(self._calib_board_item)
 
         # 初始化tableWidget
         self.tableWidget.setIconSize(QSize(100, 100))
@@ -224,6 +205,8 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self._update_sub_image_signal.connect(self._update_sub_image_slot)
         self._add_sub_image_signal.connect(self._add_sub_image_slot)
         self._del_sub_image_signal.connect(self._del_sub_image)
+        self._set_sub_image_matched_points_signal.connect(self._set_sub_image_matched_points_slot)
+
         # 连接选择文件夹信号
         self._select_folder_signal.connect(self._select_folder, type=Qt.ConnectionType.BlockingQueuedConnection)
 
@@ -286,11 +269,16 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         :param img_path: 图像文件路径
         """
         sub_img = SubImage(
-            id=id,
+            img_id=id,
             img_path=img_path
         )
         with self._sub_image_lock:
             self._sub_image_items[id] = sub_img
+
+        sub_img.set_clicked_callback(
+            lambda v=sub_img.img_id: self._sub_image_clicked(v)
+        )
+
         self._add_sub_image_signal.emit(sub_img)
 
     def del_sub_image(self, id: str):
@@ -329,6 +317,16 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         with self._sub_image_lock:
             if img_id in self._sub_image_items:
                 self._sub_image_items[img_id].set_pos(pos)
+
+    def set_sub_image_matched_points(self, img_id: str, matched_points: list[MatchedPoint]):
+        """
+        为指定的子图像设置匹配点
+
+        :param img_id: 子图像ID
+        :param matched_points: 匹配点列表
+        """
+        self._set_sub_image_matched_points_signal.emit(img_id, matched_points)
+        pass
 
 
     def update_transformed_sub_img(self, img_id: str, transformed_img: cv2.typing.MatLike):
@@ -382,12 +380,8 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         :param img: QImage格式的图像
         """
         pixmap = QPixmap.fromImage(img)
-        if self._calib_board_item is not None:
-            self._main_scene.removeItem(self._calib_board_item)
-            del self._calib_board_item
-        self._calib_board_item = QGraphicsPixmapItem(pixmap)
+        self._calib_board_item.setPixmap(pixmap)
         self._calib_board_item.setZValue(-1)
-        self._main_scene.addItem(self._calib_board_item)
         self._main_scene.update()
 
     @pyqtSlot(QSpinBox)
@@ -398,9 +392,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         delta = event.angleDelta().y()
         scale = 1 + delta / 1000.0
 
-        if(
-            widget == self.mainGraphicsView
-        ):
+        if widget == self.mainGraphicsView:
             widget.scale(scale, scale)
 
     @pyqtSlot(str)
@@ -417,44 +409,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
 
         # 更新子图像控件
         if sub_img_item is not None:
-            if sub_img_item.status == SubImageStatus.HIDE:
-                # 取消显示控件
-                if sub_img_item.transformed_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.transformed_draggable_pixmap_item)
-                if sub_img_item.original_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.original_draggable_pixmap_item)
-            elif sub_img_item.status == SubImageStatus.SHOW_ORIGINAL_MOVABLE:
-                # 取消显示控件
-                if sub_img_item.transformed_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.transformed_draggable_pixmap_item)
-                # 配置original pixmap_item
-                sub_img_item.original_draggable_pixmap_item.unlock()
-                if not sub_img_item.original_draggable_pixmap_item.scene():
-                    self._main_scene.addItem(sub_img_item.original_draggable_pixmap_item)
-            elif sub_img_item.status == SubImageStatus.SHOW_ORIGINAL_LOCKED:
-                # 取消显示控件
-                if sub_img_item.transformed_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.transformed_draggable_pixmap_item)
-                # 配置original pixmap_item
-                sub_img_item.original_draggable_pixmap_item.lock()
-                if not sub_img_item.original_draggable_pixmap_item.scene():
-                    self._main_scene.addItem(sub_img_item.original_draggable_pixmap_item)
-            elif sub_img_item.status == SubImageStatus.SHOW_TRANSFORMED_MOVABLE:
-                # 取消显示控件
-                if sub_img_item.original_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.original_draggable_pixmap_item)
-                # 配置original pixmap_item
-                sub_img_item.transformed_draggable_pixmap_item.unlock()
-                if not sub_img_item.transformed_draggable_pixmap_item.scene():
-                    self._main_scene.addItem(sub_img_item.transformed_draggable_pixmap_item)
-            elif sub_img_item.status == SubImageStatus.SHOW_TRANSFORMED_LOCKED:
-                # 取消显示控件
-                if sub_img_item.original_draggable_pixmap_item.scene():
-                    self._main_scene.removeItem(sub_img_item.original_draggable_pixmap_item)
-                # 配置original pixmap_item
-                sub_img_item.transformed_draggable_pixmap_item.lock()
-                if not sub_img_item.transformed_draggable_pixmap_item.scene():
-                    self._main_scene.addItem(sub_img_item.transformed_draggable_pixmap_item)
+            sub_img_item.switch_to(sub_img_item.status)
         self._main_scene.update()
 
 
@@ -469,7 +424,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self.tableWidget.insertRow(row_id)
 
         # 设置"子图像序列"列表区域内容
-        self.tableWidget.setItem(row_id, 0, QTableWidgetItem(sub_img.id))
+        self.tableWidget.setItem(row_id, 0, QTableWidgetItem(sub_img.img_id))
         self.tableWidget.setItem(row_id, 1, QTableWidgetItem(str(sub_img.enabled)))
         item = QTableWidgetItem()
         item.setIcon(QIcon(sub_img.thumbnail_pixmap))
@@ -477,19 +432,30 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self.tableWidget.setItem(row_id, 3, QTableWidgetItem("[]"))
 
         # 向主画布中添加子图像
-        self._main_scene.addItem(sub_img.original_draggable_pixmap_item)
+        self._main_scene.addItem(sub_img.get_original_pixmap_item())
+        self._main_scene.addItem(sub_img.get_transformed_pixmap_item())
         self._main_scene.update()
 
     def _del_sub_image(self, img_id: str):
         """
-        从mainGraphicsView中删除子图对应控件(sub_img.original_draggable_pixmap_item)
+        从mainGraphicsView中删除子图对应控件(sub_img.get_original_pixmap_item)
 
         :param img_id: 子图像ID
         """
         with self._sub_image_lock:
             if img_id in self._sub_image_items:
-                self._main_scene.removeItem(self._sub_image_items[img_id].original_draggable_pixmap_item)
+                self._main_scene.removeItem(self._sub_image_items[img_id].get_original_pixmap_item)
                 self._main_scene.update()
+
+    @pyqtSlot(str, list)
+    def _set_sub_image_matched_points_slot(self, img_id: str, matched_points: list[MatchedPoint]):
+        with self._sub_image_lock:
+            if img_id in self._sub_image_items:
+                self._sub_image_items[img_id].get_original_pixmap_item().set_matched_points(
+                    calib_board=self._calib_board_item,
+                    matched_points=matched_points,
+                    scene=self._main_scene
+                )
 
 
     @pyqtSlot(str, str)
@@ -500,3 +466,24 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         """
         with self._select_folder_lock:
             self._selected_folder = QtWidgets.QFileDialog.getExistingDirectory(self, caption, directory)
+            self.subImageFolderPath.setText(self._selected_folder)
+
+    def _sub_image_clicked(self, img_id: str):
+        """
+        子图控件双击回调函数
+
+        :param img_id: 子图ID
+        """
+
+        # 切换子图状态
+        curr_status = None
+        with self._sub_image_lock:
+            curr_status = self._sub_image_items[img_id].status
+
+
+        if curr_status == SubImageStatus.SHOW_TRANSFORMED_LOCKED:
+            self.set_sub_image_status(img_id, SubImageStatus.SHOW_ORIGINAL_MOVABLE)
+        else:
+            self.set_sub_image_status(img_id, SubImageStatus.SHOW_TRANSFORMED_LOCKED)
+
+

@@ -130,7 +130,8 @@ class MainWorkflow:
                 logging.info("stitcher.stitch_full_gen_wrapped_partial() spend: {}".format(end - start))
 
                 self._ui.update_transformed_sub_img(img_id, transformed)
-                self._ui.set_sub_image_pos(img_id, [box.lt[0], box.lt[1]])
+                self._ui.set_sub_image_pos(img_id, (box.lt[0], box.lt[1]))
+                self._ui.set_sub_image_matched_points(img_id, matched_points)
                 self._ui.set_sub_image_status(img_id, SubImageStatus.SHOW_TRANSFORMED_LOCKED)
 
                 self._ui.set_progress_bar_value(int((i + 1) / img_nums * 80))

@@ -261,7 +261,7 @@
            <string>加载子图像序列</string>
           </property>
          </widget>
-         <widget class="QLineEdit" name="lineEdit_2">
+         <widget class="QLineEdit" name="subImageFolderPath">
           <property name="enabled">
            <bool>false</bool>
           </property>
