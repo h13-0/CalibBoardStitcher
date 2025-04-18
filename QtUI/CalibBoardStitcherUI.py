@@ -36,6 +36,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
     _set_sub_image_matched_points_signal = pyqtSignal(str, list)
 
     _select_folder_signal = pyqtSignal(str, str)
+    _select_save_file_signal = pyqtSignal(str, str, str)
     def __init__(self):
         Ui_CalibBoardStitcher.__init__(self)
         QWidget.__init__(self)
@@ -54,8 +55,11 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self._sub_image_lock = threading.Lock()
         self._sub_image_items = {}
 
+        # 文件选择功能
         self._select_folder_lock = threading.Lock()
         self._selected_folder = None
+        self._select_save_file_lock = threading.Lock()
+        self._selected_save_file = None
 
     def setupUi(self, main_window: QMainWindow):
         super().setupUi(main_window)
@@ -101,8 +105,9 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         self._del_sub_image_signal.connect(self._del_sub_image)
         self._set_sub_image_matched_points_signal.connect(self._set_sub_image_matched_points_slot)
 
-        # 连接选择文件夹信号
-        self._select_folder_signal.connect(self._select_folder, type=Qt.ConnectionType.BlockingQueuedConnection)
+        # 连接选择文件信号
+        self._select_folder_signal.connect(self._select_folder_slot, type=Qt.ConnectionType.BlockingQueuedConnection)
+        self._select_save_file_signal.connect(self._select_save_file_slot, type=Qt.ConnectionType.BlockingQueuedConnection)
 
 
     def set_btn_clicked_callback(self, event: ButtonClickedEvent, callback):
@@ -222,7 +227,18 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
         :param matched_points: 匹配点列表
         """
         self._set_sub_image_matched_points_signal.emit(img_id, matched_points)
-        pass
+
+    def get_sub_image_matched_points(self, img_id: str) -> list[MatchedPoint]:
+        """
+        获取子图像匹配点
+
+        :param img_id: 子图像ID
+        """
+        matched_points = []
+        with self._sub_image_lock:
+            if img_id in self._sub_image_items:
+                matched_points = self._sub_image_items[img_id].get_matched_points()
+        return matched_points
 
 
     def update_transformed_sub_img(self, img_id: str, transformed_img: cv2.typing.MatLike):
@@ -237,7 +253,7 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
                 self._sub_image_items[img_id].update_transformed_img(transformed_img)
         self._update_sub_image_signal.emit(img_id)
 
-    def select_folder(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
+    def select_existing_folder_path(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
         """
         通过UI选择文件夹
 
@@ -249,6 +265,26 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
             self._select_folder_signal.emit(caption, directory)
             with self._select_folder_lock:
                 return self._selected_folder
+
+    def select_save_file_path(self,
+            caption: Optional[str] = '', directory: Optional[str] = '', filter: Optional[str] = ''
+        ) -> str:
+        """
+        通过UI选择文件
+
+        :param caption: 窗口标题
+        :param directory: 初始路径
+        :param filter: 文件过滤器
+        :return: 选择到的文件路径
+        """
+        if threading.current_thread() == threading.main_thread():
+            (file_name, selected_filter) = QtWidgets.QFileDialog.getSaveFileName(self, caption, directory, filter)
+            return file_name
+        else:
+            self._select_save_file_signal.emit(caption, directory, filter)
+            with self._select_save_file_lock:
+                return self._selected_save_file
+
 
     def set_matched_points_changed_callback(self, callback: Callable[[str, list[MatchedPoint]], None]):
         """
@@ -361,14 +397,29 @@ class CalibBoardStitcherUI(Ui_CalibBoardStitcher, QWidget):
 
 
     @pyqtSlot(str, str)
-    def _select_folder(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
+    def _select_folder_slot(self, caption: Optional[str] = '', directory: Optional[str] = '') -> str:
         """
         选择文件夹的槽函数
-        :return: 文件夹路径
         """
         with self._select_folder_lock:
             self._selected_folder = QtWidgets.QFileDialog.getExistingDirectory(self, caption, directory)
             self.subImageFolderPath.setText(self._selected_folder)
+
+    @pyqtSlot(str, str, str)
+    def _select_save_file_slot(self, caption: Optional[str] = '', directory: Optional[str] = '', filter: Optional[str] = ''):
+        """
+        选择保存文件路径的槽函数
+
+        :param caption: 对话框标题
+        :param directory: 初始目录
+        :param filter: 文件过滤器
+        """
+        with self._select_save_file_lock:
+            (file_name, selected_filter) = QtWidgets.QFileDialog.getSaveFileName(self, caption, directory, filter)
+            if not file_name.endswith(selected_filter):
+                file_name += selected_filter
+            self._selected_save_file = file_name
+
 
     def _sub_image_selected(self, img_id: str):
         """

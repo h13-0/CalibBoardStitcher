@@ -68,7 +68,7 @@ class MainWorkflow:
         self._ui.set_progress_bar_value(0)
         self._sub_image_paths = {}
 
-        if folder is None:
+        if folder is None or not os.path.isdir(folder):
             logging.error("No folder selected.")
             return
         logging.info("Loading sub image sequence from folder {}.".format(folder))
@@ -176,6 +176,25 @@ class MainWorkflow:
             self._ui.set_progress_bar_value(0)
             logging.error(f"No QrCode found in total {img_nums} images.")
 
+    def _save_matched_points(self, save_path: str):
+        """
+        保存匹配点到文件
+
+        :param save_path: 保存路径
+        """
+        if(self._stitcher is not None and
+            save_path is not None and
+            len(save_path) > 0
+        ):
+            calib_result = CalibResult(board_obj=self._stitcher.board_cfg)
+            for img_id in self._sub_image_paths.keys():
+                matched_points = self._ui.get_sub_image_matched_points(img_id)
+                for matched in matched_points:
+                    calib_result.add_matched_point(matched)
+            try:
+                calib_result.save(save_path)
+            except Exception as e:
+                logging.error(e)
 
     def _do_task(self, task):
         task()
@@ -193,7 +212,6 @@ class MainWorkflow:
             logging.warning("Task: {} is running".format(self._task_name))
         return succ
 
-
     def _main(self):
         """
         当前工作流的主逻辑，不应当在主线程中使用
@@ -209,7 +227,7 @@ class MainWorkflow:
             ButtonClickedEvent.LOAD_SUB_IMG_SEQ_BTN_CLICKED,
             lambda : self._try_load_task(
                 lambda : self._load_sub_image_seq_task(
-                    folder=self._ui.select_folder("选择子图像序列文件夹")
+                    folder=self._ui.select_existing_folder_path("选择子图像序列文件夹")
                 ),
                 task_name="Load sub image sequence task"
             ),
@@ -219,6 +237,15 @@ class MainWorkflow:
             lambda : self._try_load_task(
                 self._exec_auto_match_task,
                 task_name="Auto match task"
+            )
+        )
+        self._ui.set_btn_clicked_callback(
+            ButtonClickedEvent.SAVE_CALIB_RESULT_BUTTON,
+            lambda : self._try_load_task(
+                lambda : self._save_matched_points(
+                    save_path=self._ui.select_save_file_path("选择保存路径", filter=".json")
+                ),
+                task_name="Save calibration result task"
             )
         )
 

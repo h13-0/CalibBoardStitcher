@@ -83,8 +83,6 @@ class SubImage:
         if self._transformed_draggable_pixmap_item is not None:
             self._transformed_draggable_pixmap_item.setPos(QPointF(pos[0], pos[1]))
 
-
-
     def set_selected_callback(self, callback):
         """
         设置SubImage的选中回调函数
@@ -92,6 +90,14 @@ class SubImage:
         :param callback: 回调函数
         """
         self._double_clicked_callback = callback
+
+    def get_matched_points(self) -> list[MatchedPoint]:
+        """
+        获取子图像匹配点
+
+        :param img_id: 子图像ID
+        """
+        return self._original_draggable_pixmap_item.get_matched_points()
 
     def set_matched_point_changed_callback(self, callback: Callable[[str, list[MatchedPoint]], None]):
         """
