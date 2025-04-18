@@ -39,9 +39,8 @@ calib_result = CalibResult.load_from_file("xxx.json")
 board_obj = calib_result.get_calib_board_obj()
 stitcher = Stitcher(board_obj)
 
-# 使用目的1: 将所有子图拼接为大图
-## Step3: 进行图像拼接
-### Step3.1: 生成空白大图和对应Mask(Mask为非0时表示对应位置有图像)
+# 使用目的1: 将所有子图拼接为大图(与下方目的二选一即可)
+## Step3.1: 生成空白大图和对应Mask(Mask为非0时表示对应位置有图像)
 base_img = np.zeros(board_obj.img_shape, dtype=np.uint8)
 base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
 for img_id, cv2_img in your_cv2_imgs:
