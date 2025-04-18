@@ -8,10 +8,10 @@ from CalibBoardElements.Box import Box
 class QrDetector:
     def __init__(self):
         self._qr_coder = cv2.wechat_qrcode_WeChatQRCode(
-            "./temp/detect.prototxt",
-            "./temp/detect.caffemodel",
-            "./temp/sr.prototxt",
-            "./temp/sr.caffemodel"
+            "./weights/detect.prototxt",
+            "./weights/detect.caffemodel",
+            "./weights/sr.prototxt",
+            "./weights/sr.caffemodel"
         )
 
 

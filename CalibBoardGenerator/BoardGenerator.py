@@ -70,7 +70,7 @@ def main():
         level=logging.DEBUG
     )
     board_cfg = CalibBoardObj(
-        row_count=40,
+        row_count=32,
         col_count=43
     )
     generator = BoardGenerator()
