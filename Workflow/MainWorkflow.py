@@ -1,14 +1,11 @@
 import logging
-import math
 import os.path
 import threading
 import multiprocessing
 import time
 
 import cv2
-import numpy as np
 
-from CalibBoardDetector.QrDetector import QrDetector
 from CalibBoardGenerator.BoardGenerator import BoardGenerator
 from CalibBoardResult.CalibResult import CalibResult, MatchedPoint
 from QtUI.CalibBoardStitcherUI import CalibBoardStitcherUI, ButtonClickedEvent

@@ -1,3 +1,6 @@
 *.pyc
 temp/
 .idea/
+*.spec
+build/
+dist/
