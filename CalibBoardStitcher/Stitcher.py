@@ -309,7 +309,7 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    calibration(calib_img_dir="../datasets/0417", export_json="./temp/0417.json", export_img="./temp/0417.jpg")
+    calibration(calib_img_dir="../datasets/20250417", export_json="./temp/250417.json", export_img="./temp/250417.jpg")
     #calibration(calib_img_dir="../datasets/0415sz/1", export_json="./temp/0415_sz.json", export_img="./temp/0415_sz.jpg")
     #stitch(img_dir="../datasets/0416", json_file="./temp/0415.json", export_img="./temp/0416.jpg")
     #stitch(img_dir="../datasets/0415sz/4", json_file="./temp/0415_sz.json", export_img="./temp/0415_sz_pcb.jpg")

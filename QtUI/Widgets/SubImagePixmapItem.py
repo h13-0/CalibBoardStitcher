@@ -1,3 +1,5 @@
+from typing import Callable
+
 from PyQt6.QtCore import Qt, QPointF
 from PyQt6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene
 
@@ -6,30 +8,16 @@ from QtUI.Widgets.MatchedPointWidget import MatchedPointWidget
 
 
 class SubImagePixmapItem(QGraphicsPixmapItem):
-    def __init__(self, pixmap: QGraphicsPixmapItem, pos: tuple[float, float]=(0, 0)):
+    def __init__(self, img_id: str, pixmap: QGraphicsPixmapItem, pos: tuple[float, float]=(0, 0)):
         super().__init__(pixmap)
+        self.img_id = img_id
         self.setPos(pos[0], pos[1])
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemSendsScenePositionChanges, True)
         self._double_clicked_callback = None
         self._matched_point_widgets = []
-
-    def mousePressEvent(self, event):
-        """
-        鼠标按压事件
-        """
-        # 设置透明度为0.5
-        self.setOpacity(0.5)
-        super().mousePressEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        """
-        鼠标释放事件
-        """
-        # 设置透明度为1.0
-        self.setOpacity(1.0)
-        super().mouseReleaseEvent(event)
+        self._matched_point_changed_callback = None
 
     def lock(self):
         """
@@ -37,6 +25,10 @@ class SubImagePixmapItem(QGraphicsPixmapItem):
         """
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsMovable, False)
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsSelectable, False)
+        for matched_point in self._matched_point_widgets:
+            matched_point.lock()
+            matched_point.set_visible(False)
+
 
     def unlock(self):
         """
@@ -44,6 +36,9 @@ class SubImagePixmapItem(QGraphicsPixmapItem):
         """
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsSelectable)
+        for matched_point in self._matched_point_widgets:
+            matched_point.unlock()
+            matched_point.set_visible(True)
 
     def set_double_clicked_callback(self, callback: callable):
         """
@@ -52,6 +47,14 @@ class SubImagePixmapItem(QGraphicsPixmapItem):
         :param callback: 回调函数
         """
         self._double_clicked_callback = callback
+
+    def set_matched_point_changed_callback(self, callback: Callable[[str, list[MatchedPoint]], None]):
+        """
+        设置匹配点变化的回调函数
+
+        :param callback: def callback(img_id: str, matched_points: list[MatchedPoint]) -> None
+        """
+        self._matched_point_changed_callback = callback
 
     def set_matched_points(self,
             calib_board: QGraphicsPixmapItem,
@@ -67,18 +70,38 @@ class SubImagePixmapItem(QGraphicsPixmapItem):
         """
 
         for matched_point in matched_points:
+            widget = MatchedPointWidget(
+                calib_board=calib_board,
+                calib_board_pos=QPointF(matched_point.cb_point[0], matched_point.cb_point[1]),
+                sub_img=self,
+                sub_img_pos=QPointF(matched_point.img_point[0], matched_point.img_point[1]),
+                scene=scene
+            )
+            widget.set_changed_callback(self._matched_point_changed)
             self._matched_point_widgets.append(
-                MatchedPointWidget(
-                    calib_board=calib_board,
-                    calib_board_pos=QPointF(matched_point.cb_point[0], matched_point.cb_point[1]),
-                    sub_img=self,
-                    sub_img_pos=QPointF(matched_point.img_point[0], matched_point.img_point[1]),
-                    scene=scene
-                )
+                widget
             )
 
+    def get_matched_points(self) -> list[MatchedPoint]:
+        """
+        获取当前图像中的匹配点信息
+        """
+        matched_points = []
+        for matched_point in self._matched_point_widgets:
+            matched_points.append(
+                MatchedPoint(
+                    img_id=self.img_id,
+                    cb_point=[matched_point.cb_point.pos().x(), matched_point.cb_point.pos().y()],
+                    img_point=[matched_point.sub_img_point.pos().x(), matched_point.sub_img_point.pos().y()],
+                )
+            )
+        return matched_points
 
     def mouseDoubleClickEvent(self, event):
         if self._double_clicked_callback is not None:
             self._double_clicked_callback()
         event.accept()
+
+    def _matched_point_changed(self):
+        if self._matched_point_changed_callback is not None:
+            self._matched_point_changed_callback(self.img_id, self.get_matched_points())

@@ -2,6 +2,7 @@ import logging
 import math
 import os.path
 import threading
+import multiprocessing
 import time
 
 import cv2
@@ -9,8 +10,9 @@ import numpy as np
 
 from CalibBoardDetector.QrDetector import QrDetector
 from CalibBoardGenerator.BoardGenerator import BoardGenerator
-from CalibBoardResult.CalibResult import CalibResult
-from QtUI.CalibBoardStitcherUI import CalibBoardStitcherUI, ButtonClickedEvent, SubImageStatus
+from CalibBoardResult.CalibResult import CalibResult, MatchedPoint
+from QtUI.CalibBoardStitcherUI import CalibBoardStitcherUI, ButtonClickedEvent
+from QtUI.SubImage import SubImageStatus
 
 from CalibBoardStitcher.Stitcher import Stitcher, stitch
 from CalibBoardElements.CalibBoardObj import CalibBoardObj
@@ -20,6 +22,7 @@ class MainWorkflow:
         self._ui = ui
         self._stop_event = stop_event
         self._main_thread = None
+        self._stitcher = None
 
         # 任务锁
         self._task_mutex = threading.Lock()
@@ -31,7 +34,7 @@ class MainWorkflow:
         self._board_img = None
 
         # 子图像序列
-        self._sub_image_paths = []
+        self._sub_image_paths = {}
 
     def _gen_calib_board_img_task(self):
         """
@@ -63,7 +66,7 @@ class MainWorkflow:
         :param folder: 文件夹路径
         """
         self._ui.set_progress_bar_value(0)
-        self._sub_image_paths = []
+        self._sub_image_paths = {}
 
         if folder is None:
             logging.error("No folder selected.")
@@ -79,12 +82,33 @@ class MainWorkflow:
                 self._ui.add_sub_image(file_name, file_path)
                 self._ui.set_sub_image_status(file_name, SubImageStatus.HIDE)
                 self._ui.set_progress_bar_value(int((i + 1) / file_num * 100))
-                self._sub_image_paths.append(file_path)
+                self._sub_image_paths[file_name] = file_path
             except Exception as e:
                 logging.error(f"load image: {file_path} failed with msg: {str(e)}")
             if self._stop_event.is_set():
                 break
         self._ui.set_progress_bar_value(100)
+
+    def _matched_point_changed(self, img_id: str, matched_points: list[MatchedPoint]) -> None:
+        """
+        匹配点变化时的回调函数
+
+        :param img_id: 图像id
+        :param matched_points: 新的匹配点
+        """
+        # 更新子图仿射图像
+        img = cv2.imread(self._sub_image_paths[img_id])
+
+        start = time.perf_counter()
+        transformed, box = self._stitcher.stitch_full_gen_wrapped_partial(img, matched_points)
+        end = time.perf_counter()
+        logging.info("stitcher.stitch_full_gen_wrapped_partial() spend: {}".format(end - start))
+
+        self._ui.update_transformed_sub_img(img_id, transformed)
+        self._ui.set_sub_image_pos(img_id, (box.lt[0], box.lt[1]))
+
+        pass
+
 
     def _exec_auto_match_task(self):
         """
@@ -92,29 +116,28 @@ class MainWorkflow:
         """
         self._ui.set_progress_bar_value(0)
 
-        stitcher = None
         calib_result = None
         board_obj = None
         img_nums = len(self._sub_image_paths)
 
         # 尝试寻找图像中的二维码，并获取配置信息
-        for file_path in self._sub_image_paths:
+        for file_path in self._sub_image_paths.values():
             img = cv2.imread(file_path)
-            if stitcher is None:
-                stitcher = Stitcher.from_qr_img(img)
-                if stitcher:
-                    calib_result = CalibResult(board_obj=stitcher.board_cfg)
+            if self._stitcher is None:
+                self._stitcher = Stitcher.from_qr_img(img)
+                if self._stitcher:
+                    calib_result = CalibResult(board_obj=self._stitcher.board_cfg)
                     board_obj = calib_result.get_calib_board_obj()
                     break
 
         # 执行标定算法
-        for i in range(img_nums):
-            file_path = self._sub_image_paths[i]
+        i = 0
+        for file_path in self._sub_image_paths.values():
             img_id = os.path.basename(file_path)
             img = cv2.imread(file_path)
 
             start = time.perf_counter()
-            matched_points = stitcher.match(img, img_id)  # 0.1655s
+            matched_points = self._stitcher.match(img, img_id)  # 0.1655s
             end = time.perf_counter()
             logging.info("stitcher.match() spend: {}".format(end - start))
 
@@ -125,7 +148,7 @@ class MainWorkflow:
             # 找到匹配点对，进行拼接
             if len(matched_points) > 0:
                 start = time.perf_counter()
-                transformed, box = stitcher.stitch_full_gen_wrapped_partial(img, matched_points)
+                transformed, box = self._stitcher.stitch_full_gen_wrapped_partial(img, matched_points)
                 end = time.perf_counter()
                 logging.info("stitcher.stitch_full_gen_wrapped_partial() spend: {}".format(end - start))
 
@@ -133,10 +156,12 @@ class MainWorkflow:
                 self._ui.set_sub_image_pos(img_id, (box.lt[0], box.lt[1]))
                 self._ui.set_sub_image_matched_points(img_id, matched_points)
                 self._ui.set_sub_image_status(img_id, SubImageStatus.SHOW_TRANSFORMED_LOCKED)
+                self._ui.set_matched_points_changed_callback(self._matched_point_changed)
 
                 self._ui.set_progress_bar_value(int((i + 1) / img_nums * 80))
+            i += 1
 
-        if stitcher is not None:
+        if self._stitcher is not None:
             # 同步结果到UI
             ## 同步放大后的标准标定板图像
             board_img = self._board_generator.gen_img(
@@ -199,8 +224,6 @@ class MainWorkflow:
 
         while not self._stop_event.is_set():
             pass
-
-
 
 
     def run(self, block:bool = False):
