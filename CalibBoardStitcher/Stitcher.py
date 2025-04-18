@@ -1,5 +1,4 @@
 import enum
-import json
 import logging
 import math
 import os
@@ -10,7 +9,6 @@ import numpy as np
 
 from CalibBoardElements.Box import Box
 from CalibBoardElements.CalibBoardObj import CalibBoardObj
-from CalibBoardElements.QrTarget import QrTarget
 from CalibBoardDetector.QrDetector import QrDetector
 from CalibBoardGenerator.BoardGenerator import BoardGenerator
 from CalibBoardResult.CalibResult import MatchedPoint, CalibResult
