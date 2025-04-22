@@ -3,7 +3,7 @@ import logging
 
 import qrcode
 
-from CalibBoardElements.Box import Box
+from .Box import Box
 
 class CalibBoardObj:
     def __init__(self,

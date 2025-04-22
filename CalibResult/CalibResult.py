@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
+from CalibBoardStitcher.Elements import CalibBoardObj
 
 def safe_cos(img_vec, cb_vec):
     img_norm = np.linalg.norm(img_vec)

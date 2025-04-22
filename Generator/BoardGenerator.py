@@ -4,10 +4,9 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 
-
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
-from CalibBoardElements.QrObj import QrObj
-from CalibBoardGenerator.QrGenerator import QrGenerator
+from CalibBoardStitcher.Elements import CalibBoardObj
+from CalibBoardStitcher.Elements import QrObj
+from .QrGenerator import QrGenerator
 
 class BoardGenerator:
     def gen_img(self, board:CalibBoardObj, progress_callback: Callable[[float], None]=None) -> cv2.typing.MatLike:

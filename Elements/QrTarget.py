@@ -1,12 +1,8 @@
 import json
 import logging
 
-import cv2.typing
-
-
-from CalibBoardElements.Box import Box
-from CalibBoardElements.QrObj import QrObj
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
+from .Box import Box
+from .CalibBoardObj import CalibBoardObj
 
 class QrTarget(Box):
     def __init__(self, row_id: int, col_id: int, box: Box, board: CalibBoardObj):

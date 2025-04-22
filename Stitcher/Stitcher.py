@@ -7,13 +7,11 @@ import time
 import cv2.typing
 import numpy as np
 
-from CalibBoardElements.Box import Box
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
-from CalibBoardDetector.QrDetector import QrDetector
-from CalibBoardGenerator.BoardGenerator import BoardGenerator
-from CalibBoardResult.CalibResult import MatchedPoint, CalibResult
-from Utils.Utils import logging_config
-
+from CalibBoardStitcher.Elements import Box, CalibBoardObj
+from CalibBoardStitcher.Detector import QrDetector
+from CalibBoardStitcher.Generator import BoardGenerator
+from CalibBoardStitcher.CalibResult import MatchedPoint, CalibResult
+from CalibBoardStitcher.Utils import logging_config
 
 class Stitcher:
     def __init__(self, board:CalibBoardObj):
@@ -207,9 +205,6 @@ class Stitcher:
     #     :param bg_color: 背景填充
     #     :return: 拼接后的图像
     #     """
-
-
-
 
     @staticmethod
     def from_qr_img(img:cv2.typing.MatLike):

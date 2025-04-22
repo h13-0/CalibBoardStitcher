@@ -1,17 +1,15 @@
-import json
-
 import cv2
 
-from CalibBoardElements.QrTarget import QrTarget
-from CalibBoardElements.Box import Box
+from CalibBoardStitcher.Elements import QrTarget, Box
+from importlib.resources import files
 
 class QrDetector:
     def __init__(self):
         self._qr_coder = cv2.wechat_qrcode_WeChatQRCode(
-            "./weights/detect.prototxt",
-            "./weights/detect.caffemodel",
-            "./weights/sr.prototxt",
-            "./weights/sr.caffemodel"
+            str(files("CalibBoardStitcher.weights").joinpath("detect.prototxt")),
+            str(files("CalibBoardStitcher.weights").joinpath("detect.caffemodel")),
+            str(files("CalibBoardStitcher.weights").joinpath("sr.prototxt")),
+            str(files("CalibBoardStitcher.weights").joinpath("sr.caffemodel"))
         )
 
 

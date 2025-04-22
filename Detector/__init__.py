@@ -1,0 +1,1 @@
+from .QrDetector import QrDetector

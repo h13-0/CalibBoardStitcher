@@ -4,8 +4,7 @@ import cv2.typing
 import qrcode
 import numpy as np
 
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
-from CalibBoardElements.QrObj import QrObj
+from CalibBoardStitcher.Elements import CalibBoardObj, QrObj
 
 class QrGenerator:
     def __init__(self, board_obj: CalibBoardObj):

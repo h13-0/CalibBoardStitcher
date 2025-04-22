@@ -1,8 +1,8 @@
 import json
 import logging
 
-from CalibBoardElements.Box import Box
-from CalibBoardElements.CalibBoardObj import CalibBoardObj
+from .Box import Box
+from .CalibBoardObj import CalibBoardObj
 
 class QrObj(Box):
     def __init__(self, row_id: int, col_id: int, board_obj: CalibBoardObj):
