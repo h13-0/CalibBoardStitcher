@@ -13,6 +13,13 @@ setup(
         ],
     },
     install_requires=[
+        'altgraph',
+        'colorama',
+        'numpy',
+        'opencv-contrib-python',
+        'opencv-python',
+        'pillow',
+        'qrcode'
     ],
     author='h13',
     author_email='makerh47@gmail.com',
