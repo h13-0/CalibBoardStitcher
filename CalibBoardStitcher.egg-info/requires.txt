@@ -1,0 +1,7 @@
+altgraph
+colorama
+numpy
+opencv-contrib-python
+opencv-python
+pillow
+qrcode
