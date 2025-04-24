@@ -4,3 +4,4 @@ temp/
 *.spec
 build/
 dist/
+CalibBoardStitcher.egg-info/
