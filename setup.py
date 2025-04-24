@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name='CalibBoardStitcher',
     version='0.1',
-    packages=find_packages(),
+    packages=['CalibBoardStitcher'],
     package_data={
         'CalibBoardStitcher': [
             'weights/detect.caffemodel',
