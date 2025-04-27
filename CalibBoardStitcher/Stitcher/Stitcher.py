@@ -3,13 +3,13 @@ import logging
 import math
 import os
 import time
+import json
 
 import cv2.typing
 import numpy as np
 
 from CalibBoardStitcher.Elements import Box, CalibBoardObj
 from CalibBoardStitcher.Detector import QrDetector
-from CalibBoardStitcher.Generator import BoardGenerator
 from CalibBoardStitcher.CalibResult import MatchedPoint, CalibResult
 from CalibBoardStitcher.Utils import logging_config
 
@@ -18,13 +18,8 @@ class Stitcher:
         self._board = board
         self._qr_detector = QrDetector()
 
-        # 生成标定板标准图像以及相关参数信息
-        board_generator = BoardGenerator()
-        #self._board_img = None
-        #self._board_img = board_generator.gen_img(board)
-
     @property
-    def board_cfg(self) -> CalibBoardObj:
+    def board_obj(self) -> CalibBoardObj:
         return self._board
 
     def detect_calib_board_cells(self):
@@ -58,13 +53,15 @@ class Stitcher:
 
     def stitch_full_gen_wrapped_partial(self,
             partial_img: cv2.typing.MatLike,
-            matched_points: list[MatchedPoint]
+            matched_points: list[MatchedPoint],
+            scale: float = 1.0
         ) -> tuple[cv2.typing.MatLike, Box]:
         """
         生成完整仿射变换后的子图
 
         :param partial_img: 待拼接的子图
         :param matched_points: 匹配点对
+        :param scale: 放大系数
         :return: RGBA四通道图像
         """
         # 0. 预处理数据
@@ -79,7 +76,7 @@ class Stitcher:
 
         # 1. 计算变换矩阵均值
         src_points = np.array([point.img_point for point in matched_points])
-        dst_points = np.array([point.cb_point for point in matched_points])
+        dst_points = np.array([point.cb_point for point in matched_points]) * scale
         m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
 
         # 2. 计算仿射后的图像区域，并划定ROI加速运算
@@ -95,7 +92,9 @@ class Stitcher:
 
         # 3. 对ROI区域进行仿射，加速仿射运算
         ## 3.1 重新计算变换矩阵
-        dst_points = np.array([[point.cb_point[0] - pos_x1, point.cb_point[1] - pos_y1] for point in matched_points])
+        dst_points = np.array(
+            [[point.cb_point[0] * scale - pos_x1, point.cb_point[1] * scale - pos_y1] for point in matched_points]
+        )
         m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
 
         ## 4.2 执行仿射变换
@@ -109,7 +108,8 @@ class Stitcher:
 
     def stitch_full_cover(self,
         base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
-        partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint]
+        partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint],
+        scale: float = 1.0
     ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
         """
         直接将整张子图覆盖拼接到大图中
@@ -118,13 +118,14 @@ class Stitcher:
         :param base_img_mask: 大图mask
         :param partial_img: 待拼接的子图
         :param matched_points: 匹配点对
+        :param scale: 放大系数
         :return: tuple[base, mask], 分别为拼接好的图像和mask
         """
         # 0. 获取必要参数
         base_h, base_w = base_img.shape[0:2]
 
         # 1. 对子图进行仿射变换
-        wrapped_partial, pos = self.stitch_full_gen_wrapped_partial(partial_img, matched_points)
+        wrapped_partial, pos = self.stitch_full_gen_wrapped_partial(partial_img, matched_points, scale)
 
         ## 1.1 将位置转换为整数
         pos_l = math.floor(pos.left)
@@ -146,65 +147,30 @@ class Stitcher:
 
         return base_img, base_img_mask
 
-    def stitch_to(self,
-            base_img: cv2.typing.MatLike, base_img_mask: cv2.typing.MatLike,
-            partial_img: cv2.typing.MatLike, matched_points: list[MatchedPoint],
-            method: StitchMethod = StitchMethod.FULL_COVER
-        ) -> tuple[cv2.typing.MatLike, cv2.typing.MatLike]:
+    def stitch_full_calc_wrapped_partial_box(self,
+            img_size: tuple[int, int],
+            matched_points: list[MatchedPoint],
+            scale: float = 1.0
+        ) -> Box:
         """
-        按照指定方式拼接单个图像
-
-        :param base_img: 待拼接到的图像
-        :param base_img_mask: 待拼接到的图像的mask，为1的部分表示已存在子图
-        :param partial_img: 带拼接的子图像
-        :param matched_points: 子图匹配到的坐标点位
-        :param method: 拼接方法
-        :return: tuple[base, mask], 分别为拼接好的图像和mask
+        计算完整仿射变换后的子图所在区域
+        :param img_size: 子图像尺寸, (w, h)
+        :param matched_points:
+        :param scale: 放大系数
+        :return: Box
         """
+        partial_w, partial_h = img_size
+        # 1. 计算变换矩阵均值
+        src_points = np.array([point.img_point for point in matched_points])
+        dst_points = np.array([point.cb_point for point in matched_points]) * scale
+        m, inliers = cv2.estimateAffine2D(src_points, dst_points) #0.0001s
 
+        # 2. 计算仿射后的图像区域，并划定ROI加速运算
+        return Box(
+            lt=[0, 0], rt=[partial_w - 1, 0],
+            rb=[partial_w - 1, partial_h - 1], lb=[0, partial_h - 1]
+        ).warp_affine(m)
 
-
-        pass
-
-
-
-
-    #
-    # def stitch(self,
-    #     stitched_img_w: int, stitched_img_h: int,
-    #     partial_img: list[cv2.typing.MatLike], matched_points: list[list[MatchedPoints]],
-    #     bg_color: tuple=(0, 0, 0), method: StitchMethod=StitchMethod.FULL_COVER
-    # ) -> cv2.typing.MatLike:
-    #     """
-    #     按照指定方式拼接图像
-    #
-    #     :param stitched_img_w:
-    #     :param stitched_img_h:
-    #     :param partial_img:
-    #     :param matched_points:
-    #     :param bg_color:
-    #     :param method:
-    #     :return:
-    #     """
-    #
-    #     if method == Stitcher.StitchMethod.FULL_COVER:
-    #         return self.stitch_full_cover(partial_img, matched_points, bg_color)
-    #     else:
-    #         logging.error("Unsupported stitching method.")
-    #         return None
-    #
-    # def stitch_full_cover(self,
-    #     partial_img: list[cv2.typing.MatLike], matched_points: list[list[MatchedPoints]],
-    #     bg_color: tuple=(0, 0, 0)
-    # ) -> cv2.typing.MatLike:
-    #     """
-    #     直接将整张子图覆盖拼接，覆盖优先级为列表靠后图像覆盖靠前的图像
-    #
-    #     :param partial_img: 子图列表
-    #     :param matched_points: 与子图列表对应的拼接点
-    #     :param bg_color: 背景填充
-    #     :return: 拼接后的图像
-    #     """
 
     @staticmethod
     def from_qr_img(img:cv2.typing.MatLike):
@@ -218,6 +184,24 @@ class Stitcher:
             logging.error("QR code not found.")
             return None
 
+    @staticmethod
+    def from_json_file(file_path: str):
+        """
+        从json文件加载标定结果
+
+        :param file_path: json文件路径
+        :return: Stitcher
+        """
+        with open(file_path, "r") as f:
+            data = json.load(f)
+
+        board_obj = CalibBoardObj(
+            row_count=data["row_count"],
+            col_count=data["col_count"],
+            qr_pixel_size=data["qr_pixel_size"],
+            qr_border=data["qr_border"]
+        )
+        return Stitcher(board_obj)
 
 def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
     """
@@ -241,14 +225,14 @@ def calibration(calib_img_dir: str, export_json: str="", export_img: str=""):
         if stitcher is None:
             stitcher = Stitcher.from_qr_img(img)
             if stitcher:
-                calib_result = CalibResult(board_obj=stitcher.board_cfg)
+                calib_result = CalibResult(board_obj=stitcher.board_obj)
 
     # 执行标定算法
     for file in os.listdir(calib_img_dir):
         file_path = os.path.join(calib_img_dir, file)
         img = cv2.imread(file_path)
         if base_img is None:
-            base_img = np.zeros(stitcher.board_cfg.img_shape, dtype=np.uint8)
+            base_img = np.zeros(stitcher.board_obj.img_shape, dtype=np.uint8)
             base_mask = np.zeros(base_img.shape[0:2], dtype=np.uint8)
 
         start = time.perf_counter()
@@ -302,8 +286,6 @@ def stitch(img_dir: str, json_file: str, export_img: str=""):
 if __name__ == "__main__":
     logging_config()
     #calibration(calib_img_dir="../datasets/stitch0306", export_json="./temp/0306.json", export_img="./temp/0306.jpg")
-    calibration(calib_img_dir="../datasets/20250417", export_json="./temp/250417.json", export_img="./temp/250417.jpg")
-    #calibration(calib_img_dir="../datasets/0415sz/1", export_json="./temp/0415_sz.json", export_img="./temp/0415_sz.jpg")
-    #stitch(img_dir="../datasets/0416", json_file="./temp/0415.json", export_img="./temp/0416.jpg")
-    #stitch(img_dir="../datasets/0415sz/4", json_file="./temp/0415_sz.json", export_img="./temp/0415_sz_pcb.jpg")
+    #calibration(calib_img_dir="../datasets/20250417", export_json="./temp/250417.json", export_img="./temp/250417.jpg")
+    stitch(img_dir="../datasets/0427_renamed", json_file="../../temp/0427.json", export_img="../../temp/0427.jpg")
 

@@ -18,7 +18,7 @@ calib_result = CalibResult.load_from_file("xxx.json")
 
 # Step2: 实例化CalibBoardObj和Stitcher
 board_obj = calib_result.get_calib_board_obj()
-stitcher = Stitcher(board_obj)
+stitcher = Stitcher.from_json_file("xxx.json")
 
 # 使用目的1: 将所有子图拼接为大图(与下方目的二选一即可)
 ## Step3.1: 生成空白大图和对应Mask(Mask为非0时表示对应位置有图像)
