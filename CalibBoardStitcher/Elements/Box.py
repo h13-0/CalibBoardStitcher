@@ -8,7 +8,7 @@ class Box:
             rt: tuple[float, float],
             rb: tuple[float, float],
             lb: tuple[float, float]
-    ):
+        ):
         """
         基础方框对象，只存储顶点信息
 
@@ -36,7 +36,12 @@ class Box:
         rt = np.dot(M, np.array([[rt[0]], [rt[1]], [1]]))
         rb = np.dot(M, np.array([[rb[0]], [rb[1]], [1]]))
         lb = np.dot(M, np.array([[lb[0]], [lb[1]], [1]]))
-        return Box(lt, rt, rb, lb)
+        return Box(
+            (lt[0][0], lt[1][0]),
+            (rt[0][0], rt[1][0]),
+            (rb[0][0], rb[1][0]),
+            (lb[0][0], lb[1][0])
+        )
 
     def is_intersect(self, box) -> bool:
         """

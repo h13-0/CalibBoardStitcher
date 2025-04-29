@@ -13,7 +13,7 @@ def safe_cos(img_vec, cb_vec):
     return np.dot(img_vec, cb_vec) / (img_norm * cb_norm)
 
 class MatchedPoint:
-    def __init__(self, img_id: str, cb_point: list[float, float], img_point: list[float, float]):
+    def __init__(self, img_id: str, cb_point: tuple[float, float], img_point: tuple[float, float]):
         self.img_id = img_id
         self.cb_point = cb_point
         self.img_point = img_point

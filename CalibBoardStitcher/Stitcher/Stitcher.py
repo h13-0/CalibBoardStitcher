@@ -81,8 +81,8 @@ class Stitcher:
 
         # 2. 计算仿射后的图像区域，并划定ROI加速运算
         transformed_box = Box(
-            lt=[0, 0], rt=[partial_w - 1, 0],
-            rb=[partial_w - 1, partial_h - 1], lb=[0, partial_h - 1]
+            lt=(0, 0), rt=(partial_w - 1, 0),
+            rb=(partial_w - 1, partial_h - 1), lb=(0, partial_h - 1)
         ).warp_affine(m)
         ## 仿射后子图在大图中的ROI顶点
         pos_x1 = math.floor(min([point[0] for point in transformed_box.vertex]))
