@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from .CalibResult import MatchedPoint, CalibResult
 from .Detector import QrDetector
 from .Elements import Box, CalibBoardObj, QrObj, QrTarget
@@ -17,3 +19,6 @@ __all__ = (
     'QrGenerator',
     'Stitcher'
 )
+
+def get_hook_dirs():
+    return [str(os.path.join(Path(__file__).parent, "hooks"))]

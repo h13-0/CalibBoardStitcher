@@ -7,11 +7,15 @@ setup(
     package_dir={'CalibBoardStitcher': 'CalibBoardStitcher'},
     package_data={
         'CalibBoardStitcher': [
-            'weights/detect.caffemodel',
-            'weights/detect.prototxt',
-            'weights/sr.caffemodel',
-            'weights/sr.prototxt'
+            'weights/*.caffemodel',
+            'weights/*.prototxt',
+            'hooks/*.py'
         ],
+    },
+    entry_points={
+        "pyinstaller40": [
+            "hook-dirs = CalibBoardStitcher:get_hook_dirs"
+        ]
     },
     install_requires=[
         'altgraph',
